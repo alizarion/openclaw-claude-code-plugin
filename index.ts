@@ -1,11 +1,11 @@
-import { registerClaudeLaunchTool } from "./src/tools/claude-launch";
-import { registerClaudeSessionsTool } from "./src/tools/claude-sessions";
-import { registerClaudeKillTool } from "./src/tools/claude-kill";
-import { registerClaudeOutputTool } from "./src/tools/claude-output";
-import { registerClaudeFgTool } from "./src/tools/claude-fg";
-import { registerClaudeBgTool } from "./src/tools/claude-bg";
-import { registerClaudeRespondTool } from "./src/tools/claude-respond";
-import { registerClaudeStatsTool } from "./src/tools/claude-stats";
+import { makeClaudeLaunchTool } from "./src/tools/claude-launch";
+import { makeClaudeSessionsTool } from "./src/tools/claude-sessions";
+import { makeClaudeKillTool } from "./src/tools/claude-kill";
+import { makeClaudeOutputTool } from "./src/tools/claude-output";
+import { makeClaudeFgTool } from "./src/tools/claude-fg";
+import { makeClaudeBgTool } from "./src/tools/claude-bg";
+import { makeClaudeRespondTool } from "./src/tools/claude-respond";
+import { makeClaudeStatsTool } from "./src/tools/claude-stats";
 import { registerClaudeCommand } from "./src/commands/claude";
 import { registerClaudeSessionsCommand } from "./src/commands/claude-sessions";
 import { registerClaudeKillCommand } from "./src/commands/claude-kill";
@@ -27,15 +27,16 @@ export function register(api: any) {
   let nr: NotificationRouter | null = null;
   let cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Tools
-  registerClaudeLaunchTool(api);
-  registerClaudeSessionsTool(api);
-  registerClaudeKillTool(api);
-  registerClaudeOutputTool(api);
-  registerClaudeFgTool(api);
-  registerClaudeBgTool(api);
-  registerClaudeRespondTool(api);
-  registerClaudeStatsTool(api);
+  // Tools — registered as factory functions so each invocation receives
+  // the calling agent's context (agentId, workspaceDir, messageChannel, etc.)
+  api.registerTool((ctx: any) => makeClaudeLaunchTool(ctx), { optional: false });
+  api.registerTool((ctx: any) => makeClaudeSessionsTool(ctx), { optional: false });
+  api.registerTool((ctx: any) => makeClaudeKillTool(ctx), { optional: false });
+  api.registerTool((ctx: any) => makeClaudeOutputTool(ctx), { optional: false });
+  api.registerTool((ctx: any) => makeClaudeFgTool(ctx), { optional: false });
+  api.registerTool((ctx: any) => makeClaudeBgTool(ctx), { optional: false });
+  api.registerTool((ctx: any) => makeClaudeRespondTool(ctx), { optional: false });
+  api.registerTool((ctx: any) => makeClaudeStatsTool(ctx), { optional: false });
 
   // Commands
   registerClaudeCommand(api);

@@ -1,6 +1,23 @@
 // SDK types are imported from "@anthropic-ai/claude-agent-sdk"
 // We define our own types for the plugin's internal state
 
+/**
+ * Context provided by OpenClaw's tool factory pattern.
+ * When registerTool receives a factory function instead of a static tool object,
+ * it calls the factory with this context, giving each tool access to the
+ * calling agent's runtime information.
+ */
+export interface OpenClawPluginToolContext {
+  config?: Record<string, any>;
+  workspaceDir?: string;
+  agentDir?: string;
+  agentId?: string;
+  sessionKey?: string;
+  messageChannel?: string;
+  agentAccountId?: string;
+  sandboxed?: boolean;
+}
+
 export type SessionStatus = "starting" | "running" | "completed" | "failed" | "killed";
 
 export type PermissionMode = "default" | "plan" | "acceptEdits" | "bypassPermissions";
