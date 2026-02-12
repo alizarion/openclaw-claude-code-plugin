@@ -47,11 +47,17 @@ interface PersistedSessionInfo {
   costUsd: number;
 }
 
+/** Debounce interval for waiting-for-input events (ms) */
+const WAITING_EVENT_DEBOUNCE_MS = 5_000;
+
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   maxSessions: number;
   maxPersistedSessions: number;
   notificationRouter: NotificationRouter | null = null;
+
+  /** Debounce tracker: session ID → last waiting-for-input event timestamp */
+  private lastWaitingEventTimestamps: Map<string, number> = new Map();
 
   /**
    * Persisted Claude session IDs — survives session cleanup/GC.
@@ -358,6 +364,15 @@ export class SessionManager {
    * wakes up immediately and can forward the question to the user.
    */
   private triggerWaitingForInputEvent(session: Session): void {
+    // Debounce: skip if a waiting-for-input event was sent recently for this session
+    const now = Date.now();
+    const lastTs = this.lastWaitingEventTimestamps.get(session.id);
+    if (lastTs && now - lastTs < WAITING_EVENT_DEBOUNCE_MS) {
+      console.log(`[SessionManager] Debounced waiting-for-input event for session=${session.id} (last sent ${now - lastTs}ms ago)`);
+      return;
+    }
+    this.lastWaitingEventTimestamps.set(session.id, now);
+
     // Build an output preview: last 5 lines, capped at 500 chars
     const lastLines = session.getOutput(5);
     let preview = lastLines.join("\n");
