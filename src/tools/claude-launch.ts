@@ -116,7 +116,7 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
           if (parts.length >= 2) {
             ctxChannel = `${parts[0]}:${ctx.agentAccountId}:${parts.slice(1).join(":")}`;
           }
-        } else if (ctx.messageChannel) {
+        } else if (ctx.messageChannel && ctx.messageChannel.includes(":")) {
           ctxChannel = ctx.messageChannel;
         }
 

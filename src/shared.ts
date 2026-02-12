@@ -82,6 +82,7 @@ export function resolveOriginChannel(ctx: any, explicitChannel?: string): string
  * Returns undefined if no match is found.
  */
 export function resolveAgentChannel(workdir: string): string | undefined {
+  console.log(`[resolveAgentChannel] workdir=${workdir}, agentChannels=${JSON.stringify(pluginConfig.agentChannels)}`);
   const mapping = pluginConfig.agentChannels;
   if (!mapping) return undefined;
 
