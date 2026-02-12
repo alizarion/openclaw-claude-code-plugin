@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { sessionManager, pluginConfig, resolveOriginChannel } from "../shared";
+import { sessionManager, pluginConfig, resolveOriginChannel, resolveAgentChannel } from "../shared";
 
 export function registerClaudeLaunchTool(api: any): void {
   api.registerTool(
@@ -121,7 +121,11 @@ export function registerClaudeLaunchTool(api: any): void {
             // _id is the tool call ID (e.g. "toolu_xxx"), not a channel ID.
             // When the agent passes params.channel explicitly, use that;
             // otherwise resolveOriginChannel falls back to config.
-            originChannel: resolveOriginChannel({ id: _id }, params.channel),
+            // Priority: explicit params.channel > agentChannels lookup by workdir > resolveOriginChannel fallback.
+            originChannel: resolveOriginChannel(
+              { id: _id },
+              params.channel || resolveAgentChannel(workdir),
+            ),
           });
 
           const promptSummary =

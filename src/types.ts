@@ -74,4 +74,14 @@ export interface PluginConfig {
   maxPersistedSessions: number;
   fallbackChannel?: string;
   permissionMode?: PermissionMode;
+
+  /**
+   * Map of agent working directories to notification channels.
+   * When a tool call (e.g. claude_launch) cannot resolve the origin channel
+   * from context, it checks whether the session workdir matches a key here
+   * and uses the mapped channel for notifications.
+   *
+   * Example: { "/home/user/my-seo-agent": "telegram:123456789" }
+   */
+  agentChannels?: Record<string, string>;
 }

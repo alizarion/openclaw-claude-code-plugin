@@ -26,6 +26,7 @@ export function setPluginConfig(config: Partial<PluginConfig>): void {
     idleTimeoutMinutes: config.idleTimeoutMinutes ?? 30,
     maxPersistedSessions: config.maxPersistedSessions ?? 50,
     fallbackChannel: config.fallbackChannel,
+    agentChannels: config.agentChannels,
   };
 }
 
@@ -73,6 +74,27 @@ export function resolveOriginChannel(ctx: any, explicitChannel?: string): string
   const fallback = pluginConfig.fallbackChannel ?? "unknown";
   console.log(`[resolveOriginChannel] Could not resolve channel from ctx keys: ${ctx ? Object.keys(ctx).join(", ") : "null"}, using fallback=${fallback}`);
   return fallback;
+}
+
+/**
+ * Look up the notification channel for a given workdir from the agentChannels config.
+ * Normalises trailing slashes before comparison.
+ * Returns undefined if no match is found.
+ */
+export function resolveAgentChannel(workdir: string): string | undefined {
+  const mapping = pluginConfig.agentChannels;
+  if (!mapping) return undefined;
+
+  const normalise = (p: string) => p.replace(/\/+$/, "");
+  const normWorkdir = normalise(workdir);
+
+  // Exact match (after trailing-slash normalisation)
+  for (const [dir, channel] of Object.entries(mapping)) {
+    if (normalise(dir) === normWorkdir) {
+      return channel;
+    }
+  }
+  return undefined;
 }
 
 export function formatDuration(ms: number): string {
