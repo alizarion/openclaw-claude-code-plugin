@@ -73,7 +73,7 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
       channel: Type.Optional(
         Type.String({
           description:
-            'Origin channel for notifications, in "channel:target" format (e.g. "telegram:123456789"). Pass this when calling from an agent tool context so notifications reach the right channel.',
+            'Origin channel for notifications, in "channel|target" format (e.g. "telegram|123456789"). Pass this when calling from an agent tool context so notifications reach the right channel.',
         }),
       ),
     }),
@@ -113,12 +113,12 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
         // Build channel from ctx if available
         let ctxChannel: string | undefined;
         if (ctx.messageChannel && ctx.agentAccountId) {
-          // messageChannel might be "telegram:123456789" — inject account
-          const parts = ctx.messageChannel.split(":");
+          // messageChannel might be "telegram|123456789" — inject account
+          const parts = ctx.messageChannel.split("|");
           if (parts.length >= 2) {
-            ctxChannel = `${parts[0]}:${ctx.agentAccountId}:${parts.slice(1).join(":")}`;
+            ctxChannel = `${parts[0]}|${ctx.agentAccountId}|${parts.slice(1).join("|")}`;
           }
-        } else if (ctx.messageChannel && ctx.messageChannel.includes(":")) {
+        } else if (ctx.messageChannel && ctx.messageChannel.includes("|")) {
           ctxChannel = ctx.messageChannel;
         }
 
@@ -145,19 +145,21 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
         if (!existsSync(autonomySkillPath)) {
           console.log(`[claude-launch] Autonomy skill not found at ${autonomySkillPath} — blocking launch`);
           return {
+            isError: true,
             content: [
               {
                 type: "text",
                 text: [
-                  `⚠️ No autonomy skill found in your workspace.`,
+                  `ERROR: Launch blocked — no autonomy skill found.`,
                   ``,
-                  `Before launching Claude Code sessions, you need to set up your autonomy preferences.`,
-                  `Ask the user how they want you to handle Claude Code interactions. For example:`,
+                  `No autonomy skill found. You MUST ask the user what level of autonomy they want to give Claude Code sessions. Then create the skill at skills/claude-code-autonomy/ with their preferences. Only then can you launch sessions.`,
+                  ``,
+                  `Do NOT create the skill without asking the user first. Ask them how they want you to handle Claude Code interactions. For example:`,
                   `- "Respond to everything automatically except architecture choices"`,
                   `- "Always ask me before responding"`,
                   `- "Handle everything yourself, just notify me when done"`,
                   ``,
-                  `Once the user responds, create the skill:`,
+                  `After the user responds, create the skill:`,
                   `1. Create directory: skills/claude-code-autonomy/`,
                   `2. Create SKILL.md with structured rules based on the user's response`,
                   `3. Create autonomy.md with the user's raw preferences`,

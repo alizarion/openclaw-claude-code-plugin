@@ -261,14 +261,14 @@ export class SessionManager {
 
   /**
    * Route an event message to the correct channel for a session.
-   * Supports "channel:account:target" (3-segment), "channel:target" (2-segment),
+   * Supports "channel|account|target" (3-segment), "channel|target" (2-segment),
    * and falls back to `openclaw system event` for unknown/1-segment origins.
    */
   private routeEventMessage(session: Session, eventText: string, label: string): void {
     console.log(`[SessionManager] Triggering ${label} for session=${session.id}, originChannel=${session.originChannel}`);
 
     if (session.originChannel && session.originChannel !== "unknown") {
-      const parts = session.originChannel.split(":");
+      const parts = session.originChannel.split("|");
 
       // Guard: 1-segment strings (e.g. "gateway") have no target — fall through to system event
       if (parts.length < 2) {
@@ -276,10 +276,10 @@ export class SessionManager {
       } else {
         let args: string[];
         if (parts.length >= 3) {
-          // channel:account:target format
-          args = ["message", "send", "--channel", parts[0], "--account", parts[1], "--target", parts.slice(2).join(":"), "-m", eventText];
+          // channel|account|target format
+          args = ["message", "send", "--channel", parts[0], "--account", parts[1], "--target", parts.slice(2).join("|"), "-m", eventText];
         } else if (parts[0] && parts[1]) {
-          // channel:target format (2 segments) — guard both parts are non-empty
+          // channel|target format (2 segments) — guard both parts are non-empty
           args = ["message", "send", "--channel", parts[0], "--target", parts[1], "-m", eventText];
         } else {
           // Malformed 2-segment (empty channel or target) — fall through
@@ -299,7 +299,7 @@ export class SessionManager {
                 if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
               } else {
                 console.log(
-                  `[SessionManager] ${label} sent via channel=${parts[0]} target=${parts.length >= 3 ? parts.slice(2).join(":") : parts[1]} for session=${session.id}`,
+                  `[SessionManager] ${label} sent via channel=${parts[0]} target=${parts.length >= 3 ? parts.slice(2).join("|") : parts[1]} for session=${session.id}`,
                 );
               }
             },

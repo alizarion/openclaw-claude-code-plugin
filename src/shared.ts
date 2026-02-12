@@ -41,7 +41,7 @@ export function setNotificationRouter(nr: NotificationRouter | null): void {
 /**
  * Resolve origin channel from an OpenClaw command/tool context.
  *
- * Attempts to build a "channel:target" string from context properties.
+ * Attempts to build a "channel|target" string from context properties.
  * Command context has: ctx.channel, ctx.senderId, ctx.chatId, ctx.id
  * Tool execute receives just an _id (tool call ID like "toolu_xxx").
  *
@@ -52,22 +52,22 @@ export function setNotificationRouter(nr: NotificationRouter | null): void {
 
 export function resolveOriginChannel(ctx: any, explicitChannel?: string): string {
   // Highest priority: explicit channel passed by caller (e.g. from tool params)
-  if (explicitChannel && String(explicitChannel).includes(":")) {
+  if (explicitChannel && String(explicitChannel).includes("|")) {
     return String(explicitChannel);
   }
   // Try structured channel info from command context
   if (ctx?.channel && ctx?.chatId) {
-    return `${ctx.channel}:${ctx.chatId}`;
+    return `${ctx.channel}|${ctx.chatId}`;
   }
   if (ctx?.channel && ctx?.senderId) {
-    return `${ctx.channel}:${ctx.senderId}`;
+    return `${ctx.channel}|${ctx.senderId}`;
   }
   // If the context id looks like a numeric telegram chat id
   if (ctx?.id && /^-?\d+$/.test(String(ctx.id))) {
-    return `telegram:${ctx.id}`;
+    return `telegram|${ctx.id}`;
   }
-  // If channelId is already in "channel:target" format, pass through
-  if (ctx?.channelId && String(ctx.channelId).includes(":")) {
+  // If channelId is already in "channel|target" format, pass through
+  if (ctx?.channelId && String(ctx.channelId).includes("|")) {
     return String(ctx.channelId);
   }
   // Log what we got for debugging

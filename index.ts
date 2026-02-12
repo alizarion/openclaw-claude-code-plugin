@@ -72,8 +72,8 @@ export function register(api: any) {
       // Uses `openclaw message send` CLI since the plugin API does not expose
       // a runtime.sendMessage method for proactive outbound messages.
       //
-      // channelId format: "channel:target" (e.g. "telegram:123456789"),
-      //   "channel:account:target" (e.g. "telegram:my-agent:123456789"),
+      // channelId format: "channel|target" (e.g. "telegram:123456789"),
+      //   "channel|account|target" (e.g. "telegram:my-agent:123456789"),
       //   or just a bare chat ID.
       // Fallback channel comes from config.fallbackChannel (e.g. "telegram:123456789").
 
@@ -86,17 +86,17 @@ export function register(api: any) {
         //   "toolu_xxxx"        → not a real channel, use fallback
 
         // Parse fallbackChannel from config
-        // Supports both "channel:target" and "channel:account:target" formats
+        // Supports both "channel|target" and "channel|account|target" formats
         let fallbackChannel = "telegram";
         let fallbackTarget = "";
         let fallbackAccount: string | undefined;
-        if (pluginConfig.fallbackChannel?.includes(":")) {
-          const fbParts = pluginConfig.fallbackChannel.split(":");
+        if (pluginConfig.fallbackChannel?.includes("|")) {
+          const fbParts = pluginConfig.fallbackChannel.split("|");
           if (fbParts.length >= 3 && fbParts[0] && fbParts[1]) {
             // channel:account:target format (e.g. "telegram:my-agent:123456789")
             fallbackChannel = fbParts[0];
             fallbackAccount = fbParts[1];
-            fallbackTarget = fbParts.slice(2).join(":");
+            fallbackTarget = fbParts.slice(2).join("|");
           } else if (fbParts[0] && fbParts[1]) {
             // channel:target format (e.g. "telegram:123456789")
             fallbackChannel = fbParts[0];
@@ -111,18 +111,18 @@ export function register(api: any) {
         if (channelId === "unknown" || !channelId) {
           // Tool-launched sessions have originChannel="unknown" — always use fallback
           if (fallbackTarget) {
-            console.log(`[claude-code] sendMessage: channelId="${channelId}", using fallback ${fallbackChannel}:${fallbackTarget}${fallbackAccount ? ` (account=${fallbackAccount})` : ""}`);
+            console.log(`[claude-code] sendMessage: channelId="${channelId}", using fallback ${fallbackChannel}|${fallbackTarget}${fallbackAccount ? ` (account=${fallbackAccount})` : ""}`);
           } else {
             console.warn(`[claude-code] sendMessage: channelId="${channelId}" and no fallbackChannel configured — message will not be sent`);
             return;
           }
-        } else if (channelId.includes(":")) {
-          const parts = channelId.split(":");
+        } else if (channelId.includes("|")) {
+          const parts = channelId.split("|");
           if (parts.length >= 3) {
             // channel:account:target format (e.g. "telegram:my-agent:123456789")
             channel = parts[0];
             account = parts[1];
-            target = parts.slice(2).join(":");
+            target = parts.slice(2).join("|");
           } else if (parts[0] && parts[1]) {
             // channel:target format (e.g. "telegram:123456789")
             channel = parts[0];
@@ -135,7 +135,7 @@ export function register(api: any) {
         } else if (fallbackTarget) {
           // Non-numeric, non-structured ID (e.g. "toolu_xxx", "command")
           // Use fallback from config
-          console.log(`[claude-code] sendMessage: unrecognized channelId="${channelId}", using fallback ${fallbackChannel}:${fallbackTarget}`);
+          console.log(`[claude-code] sendMessage: unrecognized channelId="${channelId}", using fallback ${fallbackChannel}|${fallbackTarget}`);
         } else {
           console.warn(`[claude-code] sendMessage: unrecognized channelId="${channelId}" and no fallbackChannel configured — message will not be sent`);
           return;

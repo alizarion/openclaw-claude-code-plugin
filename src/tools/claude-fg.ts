@@ -1,8 +1,19 @@
 import { Type } from "@sinclair/typebox";
-import { sessionManager, formatDuration, resolveOriginChannel } from "../shared";
+import { sessionManager, formatDuration, resolveOriginChannel, resolveAgentChannel } from "../shared";
 import type { OpenClawPluginToolContext } from "../types";
 
-export function makeClaudeFgTool(_ctx?: OpenClawPluginToolContext) {
+export function makeClaudeFgTool(ctx?: OpenClawPluginToolContext) {
+  // Build channel from factory context if available
+  let fallbackChannel: string | undefined;
+  if (ctx?.messageChannel && ctx?.agentAccountId) {
+    const parts = ctx.messageChannel.split("|");
+    if (parts.length >= 2) {
+      fallbackChannel = `${parts[0]}|${ctx.agentAccountId}|${parts.slice(1).join("|")}`;
+    }
+  } else if (ctx?.messageChannel && ctx.messageChannel.includes("|")) {
+    fallbackChannel = ctx.messageChannel;
+  }
+
   return {
     name: "claude_fg",
     description:
@@ -19,7 +30,7 @@ export function makeClaudeFgTool(_ctx?: OpenClawPluginToolContext) {
       channel: Type.Optional(
         Type.String({
           description:
-            'Origin channel in "channel:target" format (e.g. "telegram:123456789"). Pass this when calling from an agent tool context.',
+            'Origin channel in "channel|target" format (e.g. "telegram|123456789"). Pass this when calling from an agent tool context.',
         }),
       ),
     }),
@@ -50,7 +61,16 @@ export function makeClaudeFgTool(_ctx?: OpenClawPluginToolContext) {
 
       // Mark this conversation as a foreground channel
       // _id is tool call ID; use explicit params.channel when available
-      const channelId = resolveOriginChannel({ id: _id }, params.channel);
+      let channelId = resolveOriginChannel({ id: _id }, params.channel || fallbackChannel);
+
+      // If resolveOriginChannel couldn't determine a real channel (returned "unknown"),
+      // try resolving via the session's workdir → agentChannels mapping as a fallback.
+      if (channelId === "unknown") {
+        const agentChannel = resolveAgentChannel(session.workdir);
+        if (agentChannel) {
+          channelId = agentChannel;
+        }
+      }
 
       // Get catchup output (produced while this channel was backgrounded)
       const catchupLines = session.getCatchupOutput(channelId);

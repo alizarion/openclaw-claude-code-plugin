@@ -23,7 +23,7 @@ export function registerClaudeFgCommand(api: any): void {
         return { text: `Error: Session "${ref}" not found.` };
       }
 
-      // Mark as foreground using the resolved channel (e.g. "telegram:123456")
+      // Mark as foreground using the resolved channel (e.g. "telegram|123456")
       const channelId = resolveOriginChannel(ctx);
 
       // Get catchup output (produced while this channel was backgrounded)

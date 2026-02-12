@@ -98,7 +98,7 @@ export interface PluginConfig {
    * from context, it checks whether the session workdir matches a key here
    * and uses the mapped channel for notifications.
    *
-   * Example: { "/home/user/my-seo-agent": "telegram:123456789" }
+   * Example: { "/home/user/my-seo-agent": "telegram|123456789" }
    */
   agentChannels?: Record<string, string>;
 }

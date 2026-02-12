@@ -1,8 +1,19 @@
 import { Type } from "@sinclair/typebox";
-import { sessionManager, resolveOriginChannel } from "../shared";
+import { sessionManager, resolveOriginChannel, resolveAgentChannel } from "../shared";
 import type { OpenClawPluginToolContext } from "../types";
 
-export function makeClaudeBgTool(_ctx?: OpenClawPluginToolContext) {
+export function makeClaudeBgTool(ctx?: OpenClawPluginToolContext) {
+  // Build channel from factory context if available
+  let fallbackChannel: string | undefined;
+  if (ctx?.messageChannel && ctx?.agentAccountId) {
+    const parts = ctx.messageChannel.split("|");
+    if (parts.length >= 2) {
+      fallbackChannel = `${parts[0]}|${ctx.agentAccountId}|${parts.slice(1).join("|")}`;
+    }
+  } else if (ctx?.messageChannel && ctx.messageChannel.includes("|")) {
+    fallbackChannel = ctx.messageChannel;
+  }
+
   return {
     name: "claude_bg",
     description:
@@ -17,7 +28,7 @@ export function makeClaudeBgTool(_ctx?: OpenClawPluginToolContext) {
       channel: Type.Optional(
         Type.String({
           description:
-            'Origin channel in "channel:target" format (e.g. "telegram:123456789"). Pass this when calling from an agent tool context.',
+            'Origin channel in "channel|target" format (e.g. "telegram|123456789"). Pass this when calling from an agent tool context.',
         }),
       ),
     }),
@@ -47,7 +58,13 @@ export function makeClaudeBgTool(_ctx?: OpenClawPluginToolContext) {
           };
         }
 
-        const channelId = resolveOriginChannel({ id: _id }, params.channel);
+        let channelId = resolveOriginChannel({ id: _id }, params.channel || fallbackChannel);
+        if (channelId === "unknown") {
+          const agentChannel = resolveAgentChannel(session.workdir);
+          if (agentChannel) {
+            channelId = agentChannel;
+          }
+        }
         session.saveFgOutputOffset(channelId);
         session.foregroundChannels.delete(channelId);
         return {
@@ -61,7 +78,18 @@ export function makeClaudeBgTool(_ctx?: OpenClawPluginToolContext) {
       }
 
       // No session specified — find any session that has this channel in foreground
-      const resolvedId = resolveOriginChannel({ id: _id }, params.channel);
+      let resolvedId = resolveOriginChannel({ id: _id }, params.channel || fallbackChannel);
+      if (resolvedId === "unknown") {
+        // Try each session's workdir to find a matching agent channel
+        const allSessionsForLookup = sessionManager.list("all");
+        for (const s of allSessionsForLookup) {
+          const agentChannel = resolveAgentChannel(s.workdir);
+          if (agentChannel && s.foregroundChannels.has(agentChannel)) {
+            resolvedId = agentChannel;
+            break;
+          }
+        }
+      }
       const allSessions = sessionManager.list("all");
       const fgSessions = allSessions.filter((s) =>
         s.foregroundChannels.has(resolvedId),

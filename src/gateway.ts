@@ -66,7 +66,7 @@ export function registerGatewayMethods(api: any): void {
         allowedTools: params.allowedTools ?? params.allowed_tools,
         resumeSessionId: params.resumeSessionId ?? params.resume_session_id,
         forkSession: params.forkSession ?? params.fork_session,
-        multiTurn: params.multiTurn ?? params.multi_turn,
+        multiTurn: !(params.multiTurnDisabled ?? params.multi_turn_disabled),
         originChannel: params.originChannel ?? "gateway",
       });
 

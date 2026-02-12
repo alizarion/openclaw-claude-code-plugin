@@ -138,7 +138,7 @@ export class Session {
     this.originChannel = config.originChannel;
     this.resumeSessionId = config.resumeSessionId;
     this.forkSession = config.forkSession;
-    this.multiTurn = config.multiTurn ?? false;
+    this.multiTurn = config.multiTurn ?? true;
     this.startedAt = Date.now();
     this.abortController = new AbortController();
   }
