@@ -88,8 +88,13 @@ export function resolveAgentChannel(workdir: string): string | undefined {
   const normalise = (p: string) => p.replace(/\/+$/, "");
   const normWorkdir = normalise(workdir);
 
+  // Sort entries by path length descending so the most specific (longest) prefix wins
+  const entries = Object.entries(mapping).sort(
+    (a, b) => b[0].length - a[0].length,
+  );
+
   // Prefix match: workdir is under (or equal to) the configured dir
-  for (const [dir, channel] of Object.entries(mapping)) {
+  for (const [dir, channel] of entries) {
     if (normWorkdir === normalise(dir) || normWorkdir.startsWith(normalise(dir) + "/")) {
       return channel;
     }

@@ -254,6 +254,75 @@ export class SessionManager {
   }
 
   /**
+   * Route an event message to the correct channel for a session.
+   * Supports "channel:account:target" (3-segment), "channel:target" (2-segment),
+   * and falls back to `openclaw system event` for unknown/1-segment origins.
+   */
+  private routeEventMessage(session: Session, eventText: string, label: string): void {
+    console.log(`[SessionManager] Triggering ${label} for session=${session.id}, originChannel=${session.originChannel}`);
+
+    if (session.originChannel && session.originChannel !== "unknown") {
+      const parts = session.originChannel.split(":");
+
+      // Guard: 1-segment strings (e.g. "gateway") have no target — fall through to system event
+      if (parts.length < 2) {
+        console.log(`[SessionManager] originChannel="${session.originChannel}" is 1-segment, falling through to system event`);
+      } else {
+        let args: string[];
+        if (parts.length >= 3) {
+          // channel:account:target format
+          args = ["message", "send", "--channel", parts[0], "--account", parts[1], "--target", parts.slice(2).join(":"), "-m", eventText];
+        } else if (parts[0] && parts[1]) {
+          // channel:target format (2 segments) — guard both parts are non-empty
+          args = ["message", "send", "--channel", parts[0], "--target", parts[1], "-m", eventText];
+        } else {
+          // Malformed 2-segment (empty channel or target) — fall through
+          console.log(`[SessionManager] originChannel="${session.originChannel}" has empty segment(s), falling through to system event`);
+          args = [];
+        }
+
+        if (args.length > 0) {
+          execFile(
+            "openclaw",
+            args,
+            (err, _stdout, stderr) => {
+              if (err) {
+                console.error(
+                  `[SessionManager] Failed to send ${label} via channel for session=${session.id}: ${err.message}`,
+                );
+                if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
+              } else {
+                console.log(
+                  `[SessionManager] ${label} sent via channel=${parts[0]} target=${parts.length >= 3 ? parts.slice(2).join(":") : parts[1]} for session=${session.id}`,
+                );
+              }
+            },
+          );
+          return;
+        }
+      }
+    }
+
+    // Fallback: wake main agent via system event
+    execFile(
+      "openclaw",
+      ["system", "event", "--text", eventText, "--mode", "now"],
+      (err, _stdout, stderr) => {
+        if (err) {
+          console.error(
+            `[SessionManager] Failed to trigger ${label} for session=${session.id}: ${err.message}`,
+          );
+          if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
+        } else {
+          console.log(
+            `[SessionManager] ${label} triggered via system event for session=${session.id}`,
+          );
+        }
+      },
+    );
+  }
+
+  /**
    * Trigger an OpenClaw agent event when a Claude Code session completes.
    * Fires `openclaw system event` with session details so the agent can
    * immediately process the result.
@@ -279,55 +348,7 @@ export class SessionManager {
       `Use claude_output(session='${session.id}', full=true) to get the full result and transmit the analysis to the user.`,
     ].join("\n");
 
-    console.log(`[SessionManager] Triggering agent event for session=${session.id}, originChannel=${session.originChannel}`);
-
-    if (session.originChannel && session.originChannel !== "unknown") {
-      // Route to the specific agent's channel
-      // Supports both "channel:target" and "channel:account:target" formats
-      const parts = session.originChannel.split(":");
-      let args: string[];
-      if (parts.length >= 3) {
-        // channel:account:target format
-        args = ["message", "send", "--channel", parts[0], "--account", parts[1], "--target", parts.slice(2).join(":"), "-m", eventText];
-      } else {
-        // channel:target format (2 segments)
-        args = ["message", "send", "--channel", parts[0], "--target", parts[1], "-m", eventText];
-      }
-      execFile(
-        "openclaw",
-        args,
-        (err, _stdout, stderr) => {
-          if (err) {
-            console.error(
-              `[SessionManager] Failed to send agent event via channel for session=${session.id}: ${err.message}`,
-            );
-            if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
-          } else {
-            console.log(
-              `[SessionManager] Agent event sent via channel=${parts[0]} target=${parts.length >= 3 ? parts.slice(2).join(":") : parts[1]} for session=${session.id}`,
-            );
-          }
-        },
-      );
-    } else {
-      // Fallback: wake main agent
-      execFile(
-        "openclaw",
-        ["system", "event", "--text", eventText, "--mode", "now"],
-        (err, _stdout, stderr) => {
-          if (err) {
-            console.error(
-              `[SessionManager] Failed to trigger agent event for session=${session.id}: ${err.message}`,
-            );
-            if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
-          } else {
-            console.log(
-              `[SessionManager] Agent event triggered for session=${session.id}`,
-            );
-          }
-        },
-      );
-    }
+    this.routeEventMessage(session, eventText, "agent event");
   }
 
   /**
@@ -356,55 +377,7 @@ export class SessionManager {
       `Use claude_respond(session='${session.id}', message='...') to send a reply, or claude_output(session='${session.id}') to see full context.`,
     ].join("\n");
 
-    console.log(`[SessionManager] Triggering waiting-for-input event for session=${session.id} (multiTurn=${session.multiTurn}), originChannel=${session.originChannel}`);
-
-    if (session.originChannel && session.originChannel !== "unknown") {
-      // Route to the specific agent's channel
-      // Supports both "channel:target" and "channel:account:target" formats
-      const parts = session.originChannel.split(":");
-      let args: string[];
-      if (parts.length >= 3) {
-        // channel:account:target format
-        args = ["message", "send", "--channel", parts[0], "--account", parts[1], "--target", parts.slice(2).join(":"), "-m", eventText];
-      } else {
-        // channel:target format (2 segments)
-        args = ["message", "send", "--channel", parts[0], "--target", parts[1], "-m", eventText];
-      }
-      execFile(
-        "openclaw",
-        args,
-        (err, _stdout, stderr) => {
-          if (err) {
-            console.error(
-              `[SessionManager] Failed to send waiting-for-input event via channel for session=${session.id}: ${err.message}`,
-            );
-            if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
-          } else {
-            console.log(
-              `[SessionManager] Waiting-for-input event sent via channel=${parts[0]} target=${parts.length >= 3 ? parts.slice(2).join(":") : parts[1]} for session=${session.id}`,
-            );
-          }
-        },
-      );
-    } else {
-      // Fallback: wake main agent
-      execFile(
-        "openclaw",
-        ["system", "event", "--text", eventText, "--mode", "now"],
-        (err, _stdout, stderr) => {
-          if (err) {
-            console.error(
-              `[SessionManager] Failed to trigger waiting-for-input event for session=${session.id}: ${err.message}`,
-            );
-            if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
-          } else {
-            console.log(
-              `[SessionManager] Waiting-for-input event triggered for session=${session.id}`,
-            );
-          }
-        },
-      );
-    }
+    this.routeEventMessage(session, eventText, "waiting-for-input event");
   }
 
   /**

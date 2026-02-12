@@ -47,6 +47,13 @@
           "bypassPermissions"
         ],
         "description": "Default permission mode for Claude Code sessions"
+      },
+      "agentChannels": {
+        "type": "object",
+        "description": "Map of agent working directories to notification channels (e.g. { \"/path/to/workdir\": \"telegram:123\" })",
+        "additionalProperties": {
+          "type": "string"
+        }
       }
     }
   }

@@ -83,22 +83,33 @@ export function register(api: any) {
         //   "123456789"         → channel=telegram (fallback), target=123456789
         //   "toolu_xxxx"        → not a real channel, use fallback
 
-        // Parse fallbackChannel from config (e.g. "telegram:123456789")
+        // Parse fallbackChannel from config
+        // Supports both "channel:target" and "channel:account:target" formats
         let fallbackChannel = "telegram";
         let fallbackTarget = "";
+        let fallbackAccount: string | undefined;
         if (pluginConfig.fallbackChannel?.includes(":")) {
-          const [fc, ft] = pluginConfig.fallbackChannel.split(":", 2);
-          if (fc && ft) { fallbackChannel = fc; fallbackTarget = ft; }
+          const fbParts = pluginConfig.fallbackChannel.split(":");
+          if (fbParts.length >= 3 && fbParts[0] && fbParts[1]) {
+            // channel:account:target format (e.g. "telegram:my-agent:123456789")
+            fallbackChannel = fbParts[0];
+            fallbackAccount = fbParts[1];
+            fallbackTarget = fbParts.slice(2).join(":");
+          } else if (fbParts[0] && fbParts[1]) {
+            // channel:target format (e.g. "telegram:123456789")
+            fallbackChannel = fbParts[0];
+            fallbackTarget = fbParts[1];
+          }
         }
 
         let channel = fallbackChannel;
         let target = fallbackTarget;
-        let account: string | undefined;
+        let account: string | undefined = fallbackAccount;
 
         if (channelId === "unknown" || !channelId) {
           // Tool-launched sessions have originChannel="unknown" — always use fallback
           if (fallbackTarget) {
-            console.log(`[claude-code] sendMessage: channelId="${channelId}", using fallback ${fallbackChannel}:${fallbackTarget}`);
+            console.log(`[claude-code] sendMessage: channelId="${channelId}", using fallback ${fallbackChannel}:${fallbackTarget}${fallbackAccount ? ` (account=${fallbackAccount})` : ""}`);
           } else {
             console.warn(`[claude-code] sendMessage: channelId="${channelId}" and no fallbackChannel configured — message will not be sent`);
             return;
