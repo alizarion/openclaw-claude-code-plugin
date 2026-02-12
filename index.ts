@@ -66,6 +66,8 @@ export function register(api: any) {
         pluginConfig.maxSessions,
         pluginConfig.maxPersistedSessions,
       );
+      sm.autoRespondTrivial = pluginConfig.autoRespondTrivial ?? false;
+      console.log(`[claude-code-plugin] autoRespondTrivial=${sm.autoRespondTrivial}`);
       setSessionManager(sm);
 
       // Create NotificationRouter with OpenClaw's outbound message pipeline.

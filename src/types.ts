@@ -39,7 +39,7 @@ export interface SessionConfig {
   forkSession?: boolean;     // Fork instead of continuing when resuming
 
   // Multi-turn support (Task 15)
-  multiTurn?: boolean;  // If true, use AsyncIterable prompt for multi-turn conversations
+  multiTurn?: boolean;  // Use AsyncIterable prompt for multi-turn conversations (default: true)
 }
 
 export interface ClaudeSession {
@@ -101,4 +101,11 @@ export interface PluginConfig {
    * Example: { "/home/user/my-seo-agent": "telegram:123456789" }
    */
   agentChannels?: Record<string, string>;
+
+  /**
+   * Auto-respond "Yes, proceed." to trivial questions (e.g. "Should I proceed?",
+   * "Can I read file X?", "Want me to install dependencies?").
+   * Disabled by default.
+   */
+  autoRespondTrivial?: boolean;
 }

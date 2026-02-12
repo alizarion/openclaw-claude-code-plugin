@@ -1,6 +1,6 @@
 import { execFile } from "child_process";
 import { Session } from "./session";
-import { generateSessionName } from "./shared";
+import { generateSessionName, resolveAgentChannel } from "./shared";
 import type { NotificationRouter } from "./notifications";
 import type { SessionConfig, SessionStatus } from "./types";
 
@@ -47,11 +47,36 @@ interface PersistedSessionInfo {
   costUsd: number;
 }
 
+/**
+ * Regex patterns for trivial questions that can be auto-responded to.
+ * Conservative whitelist — only matches clear yes/no confirmation prompts.
+ */
+const TRIVIAL_QUESTION_PATTERNS: RegExp[] = [
+  /should\s+I\s+proceed\??/i,
+  /do\s+you\s+want\s+me\s+to\s+proceed\??/i,
+  /should\s+I\s+continue\??/i,
+  /do\s+you\s+want\s+me\s+to\s+continue\??/i,
+  /can\s+I\s+(read|write|access|create|modify|delete|edit)\s+/i,
+  /want\s+me\s+to\s+install\s+(the\s+)?dep(endenc(ies|y))?\??/i,
+  /should\s+I\s+(fix|address|resolve)\s+(these?\s+)?(warnings?|errors?|issues?|linting)\??/i,
+  /shall\s+I\s+(proceed|continue|go\s+ahead)\??/i,
+  /do\s+you\s+want\s+me\s+to\s+go\s+ahead\??/i,
+];
+
+/** Debounce interval for waiting-for-input events (ms) */
+const WAITING_EVENT_DEBOUNCE_MS = 5_000;
+
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   maxSessions: number;
   maxPersistedSessions: number;
   notificationRouter: NotificationRouter | null = null;
+
+  /** Auto-respond to trivial questions without waking the orchestrator agent */
+  autoRespondTrivial: boolean = false;
+
+  /** Debounce tracker: session ID → last waiting-for-input event timestamp */
+  private lastWaitingEventTimestamps: Map<string, number> = new Map();
 
   /**
    * Persisted Claude session IDs — survives session cleanup/GC.
@@ -134,6 +159,22 @@ export class SessionManager {
 
       session.onWaitingForInput = () => {
         console.log(`[SessionManager] session.onWaitingForInput fired for session=${session.id}`);
+
+        // Fast-path: auto-respond to trivial questions if enabled
+        if (this.autoRespondTrivial) {
+          const question = session.getOutput(5).join("\n");
+          const trivialMatch = this.matchTrivialQuestion(question);
+          if (trivialMatch) {
+            console.log(`[SessionManager] Auto-responding to trivial question for session=${session.id}: "${trivialMatch.slice(0, 100)}"`);
+            session.sendMessage("Yes, proceed.");
+            // Audit notification via routeEventMessage
+            const auditText = `🤖 [${session.name}] Auto-responded "Yes, proceed." to: "${trivialMatch.slice(0, 100)}"`;
+            this.routeEventMessage(session, auditText, "auto-respond audit");
+            return;
+          }
+        }
+
+        // Normal flow
         nr.onWaitingForInput(session, session.originChannel);
 
         // Wake the orchestrator agent so it can forward the question to the user
@@ -303,7 +344,38 @@ export class SessionManager {
       }
     }
 
-    // Fallback: wake main agent via system event
+    // Last resort: try resolveAgentChannel(workdir) before falling back to broadcast system event
+    const agentChannel = resolveAgentChannel(session.workdir);
+    if (agentChannel) {
+      const agentParts = agentChannel.split(":");
+      if (agentParts.length >= 2 && agentParts[0] && agentParts[1]) {
+        let args: string[];
+        if (agentParts.length >= 3) {
+          args = ["message", "send", "--channel", agentParts[0], "--account", agentParts[1], "--target", agentParts.slice(2).join(":"), "-m", eventText];
+        } else {
+          args = ["message", "send", "--channel", agentParts[0], "--target", agentParts[1], "-m", eventText];
+        }
+        execFile(
+          "openclaw",
+          args,
+          (err, _stdout, stderr) => {
+            if (err) {
+              console.error(
+                `[SessionManager] Failed to send ${label} via agentChannel for session=${session.id}: ${err.message}`,
+              );
+              if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
+            } else {
+              console.log(
+                `[SessionManager] ${label} sent via agentChannel=${agentChannel} for session=${session.id}`,
+              );
+            }
+          },
+        );
+        return;
+      }
+    }
+
+    // Fallback: wake main agent via system event (broadcasts to all agents/bots)
     execFile(
       "openclaw",
       ["system", "event", "--text", eventText, "--mode", "now"],
@@ -357,7 +429,30 @@ export class SessionManager {
    * Fires `openclaw system event --mode now` so the orchestrator agent
    * wakes up immediately and can forward the question to the user.
    */
+  /**
+   * Match a trivial yes/no question in the given text.
+   * Returns the matched question string if found, null otherwise.
+   */
+  matchTrivialQuestion(text: string): string | null {
+    for (const pattern of TRIVIAL_QUESTION_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) {
+        return match[0];
+      }
+    }
+    return null;
+  }
+
   private triggerWaitingForInputEvent(session: Session): void {
+    // Debounce: skip if a waiting-for-input event was sent recently for this session
+    const now = Date.now();
+    const lastTs = this.lastWaitingEventTimestamps.get(session.id);
+    if (lastTs && now - lastTs < WAITING_EVENT_DEBOUNCE_MS) {
+      console.log(`[SessionManager] Debounced waiting-for-input event for session=${session.id} (last sent ${now - lastTs}ms ago)`);
+      return;
+    }
+    this.lastWaitingEventTimestamps.set(session.id, now);
+
     // Build an output preview: last 5 lines, capped at 500 chars
     const lastLines = session.getOutput(5);
     let preview = lastLines.join("\n");

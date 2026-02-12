@@ -54,6 +54,11 @@
         "additionalProperties": {
           "type": "string"
         }
+      },
+      "autoRespondTrivial": {
+        "type": "boolean",
+        "default": false,
+        "description": "Auto-respond 'Yes, proceed.' to trivial questions (e.g. 'Should I proceed?', 'Can I read file X?'). Disabled by default."
       }
     }
   }
