@@ -55,7 +55,8 @@ export function register(api: any) {
   api.registerService({
     id: "openclaw-claude-code-plugin",
     start: () => {
-      const config = api.getConfig?.() ?? {};
+      const config = api.pluginConfig ?? api.getConfig?.() ?? {};
+      console.log("[claude-code-plugin] Raw config from getConfig():", JSON.stringify(config));
 
       // Store config globally for all modules (Task 20)
       setPluginConfig(config);
