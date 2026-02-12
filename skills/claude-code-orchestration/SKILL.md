@@ -14,7 +14,7 @@ You orchestrate Claude Code sessions via the `openclaw-claude-code-plugin`. Each
 
 ### Mandatory rules
 
-- **Always pass `channel`** in the format `"channel:target"` (e.g., `"telegram:123456789"`). Without `channel`, notifications are lost in the void.
+- **Notifications are routed automatically** via `agentChannels` config. Do NOT pass `channel` manually — it bypasses automatic routing.
 - **Always pass `multi_turn: true`** unless the task is a guaranteed one-shot with no possible follow-up.
 - **Name the sessions** with `name` in kebab-case, short and descriptive.
 - **Set `workdir`** to the target project directory, not the agent's workspace.
@@ -25,7 +25,7 @@ You orchestrate Claude Code sessions via the `openclaw-claude-code-plugin`. Each
 |---|---|
 | `prompt` | Always. Clear and complete instruction. |
 | `name` | Always. Descriptive kebab-case (`fix-auth-bug`, `add-dark-mode`). |
-| `channel` | **Always.** Format `"channel:target"`. |
+| `channel` | **Do NOT pass.** Resolved automatically via `agentChannels`. |
 | `workdir` | Always when the project is not in the `defaultWorkdir`. |
 | `multi_turn` | `true` by default unless explicitly one-shot. |
 | `max_budget_usd` | Adjust accordingly: `1-2` for a small fix, `5` for a feature, `10+` for a major refactoring. |
@@ -41,7 +41,6 @@ claude_launch(
   prompt: "Fix the null pointer in src/auth.ts line 42",
   name: "fix-null-auth",
   workdir: "/home/user/projects/myapp",
-  channel: "telegram:123456789",
   multi_turn: true,
   max_budget_usd: 2
 )
@@ -51,7 +50,6 @@ claude_launch(
   prompt: "Implement dark mode toggle in the settings page. Use the existing theme context in src/context/theme.tsx. Add a toggle switch component and persist the preference in localStorage.",
   name: "add-dark-mode",
   workdir: "/home/user/projects/myapp",
-  channel: "telegram:123456789",
   multi_turn: true,
   max_budget_usd: 5
 )
@@ -61,7 +59,6 @@ claude_launch(
   prompt: "Refactor the database layer to use the repository pattern. Migrate all direct Prisma calls in src/services/ to use repositories in src/repositories/.",
   name: "refactor-db-repositories",
   workdir: "/home/user/projects/myapp",
-  channel: "telegram:123456789",
   multi_turn: true,
   max_budget_usd: 10,
   model: "opus"
@@ -75,7 +72,6 @@ claude_launch(
 claude_launch(
   prompt: "Continue. Also add error handling for the edge cases we discussed.",
   resume_session_id: "fix-null-auth",
-  channel: "telegram:123456789",
   multi_turn: true
 )
 
@@ -85,7 +81,6 @@ claude_launch(
   resume_session_id: "refactor-db-repositories",
   fork_session: true,
   name: "refactor-db-middleware-approach",
-  channel: "telegram:123456789",
   multi_turn: true
 )
 ```
@@ -124,13 +119,13 @@ claude_output(session: "fix-null-auth", lines: 100)
 
 ```
 # Switch to foreground (displays catchup of missed outputs + live stream)
-claude_fg(session: "fix-null-auth", channel: "telegram:123456789")
+claude_fg(session: "fix-null-auth")
 
 # Switch back to background (stops the stream, session continues)
-claude_bg(session: "fix-null-auth", channel: "telegram:123456789")
+claude_bg(session: "fix-null-auth")
 
 # Detach all foreground sessions from a channel
-claude_bg(channel: "telegram:123456789")
+claude_bg()
 ```
 
 **Note:** `claude_fg` first displays a catchup "Catchup (N missed outputs):" with everything that happened in the background, then starts live streaming.
@@ -208,10 +203,7 @@ When a session completes (completion wake event):
 
 ### Routing
 
-Notifications are sent to the originating channel via `openclaw message send`. The channel format is `"channel:target"`:
-- `"telegram:123456789"` -> Telegram chat
-- `"discord:987654321"` -> Discord channel
-- A standalone numeric ID is treated as a Telegram chat
+Notifications are routed automatically based on the session's `workdir` using the `agentChannels` plugin config. Each workspace directory maps to a specific channel (e.g., `telegram:seo-bot:123456789`). See [Agent Channels](../../docs/AGENT_CHANNELS.md) for setup.
 
 ### Events
 
@@ -240,7 +232,7 @@ This makes the conversation transparent without needing foregrounding.
 
 ### Launch checklist
 
-1. `channel` is set -> notifications arrive
+1. `agentChannels` is configured for this workdir -> notifications arrive
 2. `multi_turn: true` -> interaction is possible after launch
 3. `name` is descriptive -> easy to identify in `claude_sessions`
 4. `workdir` points to the correct project -> Claude Code works in the right directory
@@ -250,8 +242,8 @@ This makes the conversation transparent without needing foregrounding.
 
 ```
 # Launch multiple sessions on independent tasks
-claude_launch(prompt: "Build the frontend auth page", name: "frontend-auth", workdir: "/app/frontend", channel: "telegram:123", multi_turn: true, max_budget_usd: 5)
-claude_launch(prompt: "Build the backend auth API", name: "backend-auth", workdir: "/app/backend", channel: "telegram:123", multi_turn: true, max_budget_usd: 5)
+claude_launch(prompt: "Build the frontend auth page", name: "frontend-auth", workdir: "/app/frontend", multi_turn: true, max_budget_usd: 5)
+claude_launch(prompt: "Build the backend auth API", name: "backend-auth", workdir: "/app/backend", multi_turn: true, max_budget_usd: 5)
 ```
 
 - Respect the `maxSessions` limit (default: 5)
@@ -280,7 +272,7 @@ When a session completes:
 
 | Anti-pattern | Consequence | Fix |
 |---|---|---|
-| Launching without `channel` | Notifications lost, routed to `"unknown"` | Always pass `channel: "channel:target"` |
+| Passing `channel` explicitly | Bypasses automatic routing, notifications may go to wrong bot | Let `agentChannels` handle routing automatically |
 | Forgetting `multi_turn: true` | Unable to send follow-ups with `claude_respond` | Enable `multi_turn` except for explicit one-shots |
 | Not checking the result of a completed session | The user doesn't know what happened | Always read `claude_output` and summarize |
 | Launching too many sessions in parallel | `maxSessions` limit reached, sessions rejected, diluted attention | Respect the limit, prioritize, sequence if necessary |
@@ -296,11 +288,11 @@ When a session completes:
 
 | Tool | Usage | Key parameters |
 |---|---|---|
-| `claude_launch` | Launch a session | `prompt`, `name`, `workdir`, `channel`, `multi_turn`, `max_budget_usd` |
+| `claude_launch` | Launch a session | `prompt`, `name`, `workdir`, `multi_turn`, `max_budget_usd` |
 | `claude_sessions` | List sessions | `status` (all/running/completed/failed) |
 | `claude_output` | Read the output | `session`, `full`, `lines` |
-| `claude_fg` | Foreground + live stream | `session`, `channel` |
-| `claude_bg` | Switch back to background | `session`, `channel` |
+| `claude_fg` | Foreground + live stream | `session` |
+| `claude_bg` | Switch back to background | `session` |
 | `claude_kill` | Kill a session | `session` |
 | `claude_respond` | Send a follow-up | `session`, `message`, `interrupt` |
 | `claude_stats` | Usage metrics | none |
