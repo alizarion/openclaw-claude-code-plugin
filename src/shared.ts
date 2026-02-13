@@ -77,6 +77,33 @@ export function resolveOriginChannel(ctx: any, explicitChannel?: string): string
 }
 
 /**
+ * Extract the agentId from a "channel|account|target" string.
+ * In our agentChannels config, the format is "telegram|my-agent|123456789"
+ * where the second segment is the agent/account ID.
+ * Returns undefined for 1- or 2-segment strings (no agent binding).
+ */
+export function extractAgentId(channelStr: string): string | undefined {
+  const parts = channelStr.split("|");
+  // 3-segment format: channel|agentId|target
+  if (parts.length >= 3 && parts[1]) {
+    return parts[1];
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the agentId for a given session workdir.
+ * Looks up the agentChannels config to find the matching channel string,
+ * then extracts the agentId (middle segment) from it.
+ * Returns undefined if no match or no agentId can be extracted.
+ */
+export function resolveAgentId(workdir: string): string | undefined {
+  const channel = resolveAgentChannel(workdir);
+  if (!channel) return undefined;
+  return extractAgentId(channel);
+}
+
+/**
  * Look up the notification channel for a given workdir from the agentChannels config.
  * Normalises trailing slashes before comparison.
  * Returns undefined if no match is found.

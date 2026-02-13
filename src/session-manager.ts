@@ -1,4 +1,5 @@
 import { execFile } from "child_process";
+import { request as httpRequest } from "http";
 import { Session } from "./session";
 import { generateSessionName } from "./shared";
 import type { NotificationRouter } from "./notifications";
@@ -309,23 +310,27 @@ export class SessionManager {
       }
     }
 
-    // Fallback: wake main agent via system event
-    execFile(
-      "openclaw",
-      ["system", "event", "--text", eventText, "--mode", "now"],
-      (err, _stdout, stderr) => {
-        if (err) {
-          console.error(
-            `[SessionManager] Failed to trigger ${label} for session=${session.id}: ${err.message}`,
-          );
-          if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
-        } else {
-          console.log(
-            `[SessionManager] ${label} triggered via system event for session=${session.id}`,
-          );
-        }
+    // Fallback: POST to Gateway's internal webhook to wake the orchestrator immediately.
+    const gatewayUrl = "http://127.0.0.1:18789/hooks/wake";
+    const payload = JSON.stringify({ text: eventText, mode: "now" });
+    const req = httpRequest(gatewayUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
       },
-    );
+    }, (res) => {
+      if (res.statusCode === 200) {
+        console.log(`[SessionManager] ${label} triggered via webhook for session=${session.id}`);
+      } else {
+        console.error(`[SessionManager] Webhook returned ${res.statusCode} for session=${session.id}`);
+      }
+    });
+    req.on("error", (err) => {
+      console.error(`[SessionManager] Failed to trigger ${label} via webhook: ${err.message}`);
+    });
+    req.write(payload);
+    req.end();
   }
 
   /**
@@ -358,10 +363,10 @@ export class SessionManager {
   }
 
   /**
-   * Trigger an OpenClaw agent event when a session is waiting for user input.
+   * Trigger an OpenClaw event when a session is waiting for user input.
    * Works for ALL session types (single-turn and multi-turn).
-   * Fires `openclaw system event --mode now` so the orchestrator agent
-   * wakes up immediately and can forward the question to the user.
+   * Routes via the origin channel (Telegram, etc.) so the notification
+   * wakes the agent through normal channel routing.
    */
   private triggerWaitingForInputEvent(session: Session): void {
     // Debounce: skip if a waiting-for-input event was sent recently for this session
@@ -392,26 +397,14 @@ export class SessionManager {
       `Use claude_respond(session='${session.id}', message='...') to send a reply, or claude_output(session='${session.id}') to see full context.`,
     ].join("\n");
 
-    // Always use system event to wake the orchestrator agent.
-    // The notification router (nr.onWaitingForInput) already handles sending
-    // the user-facing message to the appropriate channel (e.g. Telegram).
-    console.log(`[SessionManager] Triggering waiting-for-input event via system event for session=${session.id}`);
-    execFile(
-      "openclaw",
-      ["system", "event", "--text", eventText, "--mode", "now"],
-      (err, _stdout, stderr) => {
-        if (err) {
-          console.error(
-            `[SessionManager] Failed to trigger waiting-for-input event for session=${session.id}: ${err.message}`,
-          );
-          if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
-        } else {
-          console.log(
-            `[SessionManager] waiting-for-input event triggered via system event for session=${session.id}`,
-          );
-        }
-      },
-    );
+    execFile("openclaw", ["system", "event", "--text", eventText, "--mode", "now"], (err, _stdout, stderr) => {
+      if (err) {
+        console.error(`[SessionManager] Failed to trigger waiting-for-input event for session=${session.id}: ${err.message}`);
+        if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
+      } else {
+        console.log(`[SessionManager] waiting-for-input event triggered via system event for session=${session.id}`);
+      }
+    });
   }
 
   /**
