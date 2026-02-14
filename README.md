@@ -61,39 +61,6 @@ Ensure `openclaw` CLI is available in your PATH — the plugin shells out to `op
 
 ---
 
-## Configuration
-
-Configuration is defined in `openclaw.plugin.json` and passed to the plugin via `api.getConfig()`. Set values in `~/.openclaw/openclaw.json` under `plugins.config["openclaw-claude-code-plugin"]`.
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `maxSessions` | `number` | `5` | Max concurrently active sessions. |
-| `defaultBudgetUsd` | `number` | `5` | Default max budget per session in USD. |
-| `defaultModel` | `string` | — | Default model (e.g. `"sonnet"`, `"opus"`). |
-| `defaultWorkdir` | `string` | — | Default working directory. Falls back to `process.cwd()`. |
-| `idleTimeoutMinutes` | `number` | `30` | Idle timeout for multi-turn sessions before auto-kill. |
-| `maxPersistedSessions` | `number` | `50` | Max completed sessions kept for resume. |
-| `fallbackChannel` | `string` | — | Fallback notification channel (e.g. `"telegram\|123456789"`). |
-| `permissionMode` | `string` | `"bypassPermissions"` | Default permission mode: `"default"`, `"plan"`, `"acceptEdits"`, `"bypassPermissions"`. |
-| `agentChannels` | `Record<string, string>` | — | Map workdir paths to notification channels. See [Agent Channels](docs/AGENT_CHANNELS.md). |
-
-```json
-{
-  "maxSessions": 3,
-  "defaultBudgetUsd": 10,
-  "defaultModel": "sonnet",
-  "defaultWorkdir": "/home/user/projects",
-  "permissionMode": "bypassPermissions",
-  "fallbackChannel": "telegram|main-bot|123456789",
-  "agentChannels": {
-    "/home/user/agent-seo": "telegram|seo-bot|123456789",
-    "/home/user/agent-main": "telegram|main-bot|123456789"
-  }
-}
-```
-
----
-
 ## Pre-Launch Safety Checks
 
 When an agent calls the `claude_launch` tool, four mandatory guards run before any session is spawned. If any check fails, the launch is blocked and an actionable error message is returned telling the agent exactly how to fix the issue. These checks are enforced only on the `claude_launch` tool — the gateway RPC `claude-code.launch` method and `/claude` chat command skip them.
@@ -125,6 +92,39 @@ The heartbeat file tells the agent what to do during heartbeat cycles — e.g. c
 **Checks for:** A matching entry in `pluginConfig.agentChannels` for the session's working directory, resolved via `resolveAgentChannel(workdir)`.
 
 The workspace must be mapped to a notification channel so session events (completion, waiting-for-input, etc.) reach the correct agent/chat. Uses longest-prefix matching with trailing slash normalisation.
+
+---
+
+## Configuration
+
+Configuration is defined in `openclaw.plugin.json` and passed to the plugin via `api.getConfig()`. Set values in `~/.openclaw/openclaw.json` under `plugins.config["openclaw-claude-code-plugin"]`.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `maxSessions` | `number` | `5` | Max concurrently active sessions. |
+| `defaultBudgetUsd` | `number` | `5` | Default max budget per session in USD. |
+| `defaultModel` | `string` | — | Default model (e.g. `"sonnet"`, `"opus"`). |
+| `defaultWorkdir` | `string` | — | Default working directory. Falls back to `process.cwd()`. |
+| `idleTimeoutMinutes` | `number` | `30` | Idle timeout for multi-turn sessions before auto-kill. |
+| `maxPersistedSessions` | `number` | `50` | Max completed sessions kept for resume. |
+| `fallbackChannel` | `string` | — | Fallback notification channel (e.g. `"telegram\|123456789"`). |
+| `permissionMode` | `string` | `"bypassPermissions"` | Default permission mode: `"default"`, `"plan"`, `"acceptEdits"`, `"bypassPermissions"`. |
+| `agentChannels` | `Record<string, string>` | — | Map workdir paths to notification channels. See [Agent Channels](docs/AGENT_CHANNELS.md). |
+
+```json
+{
+  "maxSessions": 3,
+  "defaultBudgetUsd": 10,
+  "defaultModel": "sonnet",
+  "defaultWorkdir": "/home/user/projects",
+  "permissionMode": "bypassPermissions",
+  "fallbackChannel": "telegram|main-bot|123456789",
+  "agentChannels": {
+    "/home/user/agent-seo": "telegram|seo-bot|123456789",
+    "/home/user/agent-main": "telegram|main-bot|123456789"
+  }
+}
+```
 
 ---
 
