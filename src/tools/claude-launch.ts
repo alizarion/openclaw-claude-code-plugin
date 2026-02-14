@@ -304,6 +304,45 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
           };
         }
 
+        // Guard: require agentChannels mapping for the workspace directory.
+        // The agentChannels config maps workspace directories to notification channels
+        // so Claude Code sessions can route notifications to the correct agent/chat.
+        // Without a mapping, notifications won't reach the right destination.
+        const agentChannelForWorkdir = resolveAgentChannel(workdir);
+        if (!agentChannelForWorkdir) {
+          console.log(`[claude-launch] No agentChannels mapping for workdir "${workdir}" — blocking launch`);
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: [
+                  `ERROR: Launch blocked — no agentChannels mapping found for workspace "${workdir}".`,
+                  ``,
+                  `Claude Code sessions require the workspace directory to be mapped in the agentChannels config`,
+                  `so notifications can be routed to the correct agent and chat.`,
+                  ``,
+                  `You must add the workspace to agentChannels FIRST. Here's what to do:`,
+                  ``,
+                  `1. Edit ~/.openclaw/openclaw.json and add the workspace mapping under plugins.config.openclaw-claude-code-plugin.agentChannels:`,
+                  ``,
+                  `   jq '.plugins.config["openclaw-claude-code-plugin"].agentChannels["${workdir}"] = "channel|accountId|chatId"' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                  ``,
+                  `   Replace "channel|accountId|chatId" with the actual values, e.g.: "telegram|my-agent|123456789"`,
+                  ``,
+                  `2. Verify the config was applied:`,
+                  ``,
+                  `   cat ~/.openclaw/openclaw.json | jq '.plugins.config["openclaw-claude-code-plugin"].agentChannels'`,
+                  ``,
+                  `3. Restart the Gateway to pick up the new config, then retry the launch:`,
+                  ``,
+                  `   openclaw gateway restart`,
+                ].join("\n"),
+              },
+            ],
+          };
+        }
+
         const session = sessionManager.spawn({
           prompt: params.prompt,
           name: params.name,
