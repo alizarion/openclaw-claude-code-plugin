@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { sessionManager, notificationRouter, resolveOriginChannel, resolveAgentChannel } from "../shared";
+import { sessionManager, notificationRouter, pluginConfig, resolveOriginChannel, resolveAgentChannel } from "../shared";
 import type { OpenClawPluginToolContext } from "../types";
 
 export function makeClaudeRespondTool(ctx?: OpenClawPluginToolContext) {
@@ -36,6 +36,12 @@ export function makeClaudeRespondTool(ctx?: OpenClawPluginToolContext) {
         Type.Boolean({
           description:
             "If true, interrupt the current turn before sending the message. Useful to redirect the session mid-response.",
+        }),
+      ),
+      userInitiated: Type.Optional(
+        Type.Boolean({
+          description:
+            "Set to true when the message comes from the user (not auto-generated). Resets the auto-respond counter and bypasses the auto-respond limit.",
         }),
       ),
     }),
@@ -75,6 +81,23 @@ export function makeClaudeRespondTool(ctx?: OpenClawPluginToolContext) {
         };
       }
 
+      // Auto-respond safety cap
+      const maxAutoResponds = pluginConfig.maxAutoResponds ?? 10;
+      if (params.userInitiated) {
+        // User-initiated: reset counter and allow through
+        session.resetAutoRespond();
+      } else if (session.autoRespondCount >= maxAutoResponds) {
+        // Agent auto-respond but limit reached: return warning, do NOT send
+        return {
+          content: [
+            {
+              type: "text",
+              text: `⚠️ Auto-respond limit reached (${session.autoRespondCount}/${maxAutoResponds}). Ask the user to provide the answer for session ${session.name}. Then call claude_respond with their answer and set userInitiated: true to reset the counter.`,
+            },
+          ],
+        };
+      }
+
       try {
         // Optionally interrupt the current turn
         if (params.interrupt) {
@@ -83,6 +106,11 @@ export function makeClaudeRespondTool(ctx?: OpenClawPluginToolContext) {
 
         // Send the message
         await session.sendMessage(params.message);
+
+        // Increment auto-respond counter (only for agent-initiated)
+        if (!params.userInitiated) {
+          session.incrementAutoRespond();
+        }
 
         // Resolve origin channel with fallback chain
         let originChannel = resolveOriginChannel(

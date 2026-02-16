@@ -15,6 +15,7 @@ export let pluginConfig: PluginConfig = {
   defaultBudgetUsd: 5,
   idleTimeoutMinutes: 30,
   maxPersistedSessions: 50,
+  maxAutoResponds: 10,
 };
 
 export function setPluginConfig(config: Partial<PluginConfig>): void {
@@ -27,6 +28,7 @@ export function setPluginConfig(config: Partial<PluginConfig>): void {
     maxPersistedSessions: config.maxPersistedSessions ?? 50,
     fallbackChannel: config.fallbackChannel,
     agentChannels: config.agentChannels,
+    maxAutoResponds: config.maxAutoResponds ?? 10,
   };
 }
 

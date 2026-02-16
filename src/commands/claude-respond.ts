@@ -63,6 +63,9 @@ export function registerClaudeRespondCommand(api: any): void {
         }
         await session.sendMessage(message);
 
+        // Reset auto-respond counter (user-initiated)
+        session.resetAutoRespond();
+
         // Display the response in the origin channel so the conversation is visible
         if (notificationRouter && session.originChannel) {
           const respondMsg = [

@@ -54,6 +54,11 @@
         "additionalProperties": {
           "type": "string"
         }
+      },
+      "maxAutoResponds": {
+        "type": "number",
+        "default": 10,
+        "description": "Maximum consecutive auto-responds (agent tool calls) per session before requiring user input via /claude-respond"
       }
     }
   }

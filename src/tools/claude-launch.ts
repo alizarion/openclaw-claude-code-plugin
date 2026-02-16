@@ -167,6 +167,18 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
                   `2. Create SKILL.md with structured rules based on the user's response`,
                   `3. Create autonomy.md with the user's raw preferences`,
                   `4. Then re-call claude_launch to start the session.`,
+                  ``,
+                  `The skill MUST also define these notification formats that the agent uses:`,
+                  ``,
+                  `👋 [session-name] Important question — needs your decision:`,
+                  `> "question text"`,
+                  `(Used when Claude asks something that requires the user's input — architecture, destructive ops, ambiguous requirements)`,
+                  ``,
+                  `🤖 [session-name] finished:`,
+                  `Summary of what Claude did, files changed, issues found.`,
+                  `(Used when a session completes — the agent reads the output and summarizes)`,
+                  ``,
+                  `Note: 🔔 Claude asks and ↩️ Responded notifications are handled automatically by the plugin. The skill only needs to define rules for 👋 (when to forward vs auto-respond) and 🤖 (summary format).`,
                 ].join("\n"),
               },
             ],
@@ -180,6 +192,7 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
         if (agentId) {
           const openclawConfigPath = join(homedir(), ".openclaw", "openclaw.json");
           let heartbeatConfigured = false;
+          let heartbeatEvery: string | undefined;
           try {
             if (existsSync(openclawConfigPath)) {
               const raw = readFileSync(openclawConfigPath, "utf-8");
@@ -189,6 +202,7 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
                 const agentEntry = agentsList.find((a: any) => a.id === agentId);
                 if (agentEntry && agentEntry.heartbeat != null) {
                   heartbeatConfigured = true;
+                  heartbeatEvery = agentEntry.heartbeat.every;
                 }
               }
             }
@@ -212,7 +226,7 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
                     ``,
                     `1. Edit ~/.openclaw/openclaw.json and add heartbeat config for agent "${agentId}":`,
                     ``,
-                    `   jq '.agents.list |= map(if .id == "${agentId}" then . + {"heartbeat": {"every": "5s", "target": "last"}} else . end)' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                    `   jq '.agents.list |= map(if .id == "${agentId}" then . + {"heartbeat": {"every": "60m", "target": "last"}} else . end)' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
                     ``,
                     `2. Verify the config was applied:`,
                     ``,
@@ -227,6 +241,31 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
                     `             STEP 4: Continue the original task: [USER_TASK]",`,
                     `     name="setup-heartbeat"`,
                     `   )`,
+                  ].join("\n"),
+                },
+              ],
+            };
+          }
+
+          // Guard: block launch if heartbeat interval is set to 5s (wastes tokens).
+          // System events use --mode now to wake agents instantly, so 5s polling is unnecessary.
+          if (heartbeatEvery === "5s") {
+            console.log(`[claude-launch] Heartbeat interval too short (5s) for agent "${agentId}" — blocking launch`);
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: [
+                    `ERROR: Launch blocked — heartbeat interval too short (5s).`,
+                    ``,
+                    `A heartbeat interval of 5s wastes tokens unnecessarily. System events use --mode now to wake you instantly, so the heartbeat interval only affects regular polling.`,
+                    ``,
+                    `Fix the heartbeat interval to 60m:`,
+                    ``,
+                    `   jq '.agents.list |= map(if .id == "${agentId}" then .heartbeat.every = "60m" else . end)' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                    ``,
+                    `Then ask the user to restart the gateway. Do NOT restart the gateway yourself — only the user can do this safely. After the user confirms the restart, retry your launch.`,
                   ].join("\n"),
                 },
               ],

@@ -101,4 +101,11 @@ export interface PluginConfig {
    * Example: { "/home/user/my-seo-agent": "telegram|123456789" }
    */
   agentChannels?: Record<string, string>;
+
+  /**
+   * Maximum number of consecutive auto-responds (agent-initiated claude_respond
+   * tool calls) before requiring user input. Resets when the user sends a
+   * message via the /claude_respond command. Default: 10.
+   */
+  maxAutoResponds: number;
 }

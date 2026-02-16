@@ -7,16 +7,17 @@ import { formatDuration } from "./shared";
  * Decides when and what to notify on active channels.
  * Implements the notification matrix from the plan (section 7.2):
  *
- * | Event                      | Background       | Foreground        |
- * |----------------------------|------------------|-------------------|
- * | Session started            | silent           | silent (stream)   |
- * | Assistant output (text)    | silent           | stream to chat    |
- * | Tool call (name + params)  | silent           | compact indicator |
- * | Tool result                | silent           | silent (verbose)  |
- * | Session completed (success)| notify           | notify            |
- * | Session completed (error)  | notify           | notify            |
- * | Budget exhausted           | notify           | notify            |
- * | Session > 10min            | reminder (once)  | silent (user sees)|
+ * | Event                      | Background            | Foreground        |
+ * |----------------------------|-----------------------|-------------------|
+ * | Session started            | silent                | silent (stream)   |
+ * | Assistant output (text)    | silent                | stream to chat    |
+ * | Tool call (name + params)  | silent                | compact indicator |
+ * | Tool result                | silent                | silent (verbose)  |
+ * | Waiting for input          | 🔔 to origin channel  | compact indicator |
+ * | Session completed (success)| silent (agent event)  | notify            |
+ * | Session completed (error)  | silent (agent event)  | notify            |
+ * | Budget exhausted           | silent (agent event)  | notify            |
+ * | Session > 10min            | reminder (once)       | silent (user sees)|
  */
 
 // Callback type: the plugin must provide a way to send messages to a channel
@@ -142,7 +143,7 @@ export class NotificationRouter {
 
     // Collect all channels to notify (foreground + origin)
     const channels = new Set(session.foregroundChannels);
-    if (originChannel) channels.add(originChannel);
+    if (originChannel && session.foregroundChannels.size > 0) channels.add(originChannel);
 
     for (const channelId of channels) {
       this.sendMessage(channelId, msg);
@@ -169,7 +170,7 @@ export class NotificationRouter {
     ].join("\n");
 
     const channels = new Set(session.foregroundChannels);
-    if (originChannel) channels.add(originChannel);
+    if (originChannel && session.foregroundChannels.size > 0) channels.add(originChannel);
 
     for (const channelId of channels) {
       this.sendMessage(channelId, msg);

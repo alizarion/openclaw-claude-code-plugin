@@ -1,5 +1,4 @@
 import { execFile } from "child_process";
-import { request as httpRequest } from "http";
 import { Session } from "./session";
 import { generateSessionName } from "./shared";
 import type { NotificationRouter } from "./notifications";
@@ -261,87 +260,8 @@ export class SessionManager {
   }
 
   /**
-   * Route an event message to the correct channel for a session.
-   * Supports "channel|account|target" (3-segment), "channel|target" (2-segment),
-   * and falls back to `openclaw system event` for unknown/1-segment origins.
-   */
-  private routeEventMessage(session: Session, eventText: string, label: string): void {
-    console.log(`[SessionManager] Triggering ${label} for session=${session.id}, originChannel=${session.originChannel}`);
-
-    if (session.originChannel && session.originChannel !== "unknown") {
-      const parts = session.originChannel.split("|");
-
-      // Guard: 1-segment strings (e.g. "gateway") have no target — fall through to system event
-      if (parts.length < 2) {
-        console.log(`[SessionManager] originChannel="${session.originChannel}" is 1-segment, falling through to system event`);
-      } else {
-        let args: string[];
-        if (parts.length >= 3) {
-          // channel|account|target format
-          args = ["message", "send", "--channel", parts[0], "--account", parts[1], "--target", parts.slice(2).join("|"), "-m", eventText];
-        } else if (parts[0] && parts[1]) {
-          // channel|target format (2 segments) — guard both parts are non-empty
-          args = ["message", "send", "--channel", parts[0], "--target", parts[1], "-m", eventText];
-        } else {
-          // Malformed 2-segment (empty channel or target) — fall through
-          console.log(`[SessionManager] originChannel="${session.originChannel}" has empty segment(s), falling through to system event`);
-          args = [];
-        }
-
-        if (args.length > 0) {
-          execFile(
-            "openclaw",
-            args,
-            (err, _stdout, stderr) => {
-              if (err) {
-                console.error(
-                  `[SessionManager] Failed to send ${label} via channel for session=${session.id}: ${err.message}`,
-                );
-                if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
-              } else {
-                console.log(
-                  `[SessionManager] ${label} sent via channel=${parts[0]} target=${parts.length >= 3 ? parts.slice(2).join("|") : parts[1]} for session=${session.id}`,
-                );
-              }
-            },
-          );
-          return;
-        }
-      }
-    }
-
-    // Fallback: POST to Gateway's internal webhook to wake the orchestrator immediately.
-    const gatewayUrl = "http://127.0.0.1:18789/hooks/wake";
-    const payload = JSON.stringify({ text: eventText, mode: "now" });
-    const req = httpRequest(gatewayUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(payload),
-      },
-    }, (res) => {
-      if (res.statusCode === 200) {
-        console.log(`[SessionManager] ${label} triggered via webhook for session=${session.id}`);
-      } else {
-        console.error(`[SessionManager] Webhook returned ${res.statusCode} for session=${session.id}`);
-      }
-    });
-    req.on("error", (err) => {
-      console.error(`[SessionManager] Failed to trigger ${label} via webhook: ${err.message}`);
-    });
-    req.write(payload);
-    req.end();
-  }
-
-  /**
    * Trigger an OpenClaw agent event when a Claude Code session completes.
-   * Fires `openclaw system event` with session details so the agent can
-   * immediately process the result.
-   */
-  /**
-   * Trigger an OpenClaw agent event when a Claude Code session completes.
-   * Fires `openclaw system event` with session details so the agent can
-   * immediately process the result.
+   * Uses `openclaw system event` (broadcast) to wake the orchestrator agent.
    */
   private triggerAgentEvent(session: Session): void {
     const status = session.status;
@@ -364,12 +284,10 @@ export class SessionManager {
       `Use claude_output(session='${session.id}', full=true) to get the full result and transmit the analysis to the user.`,
     ].join("\n");
 
-    this.routeEventMessage(session, eventText, "agent event");
-
-    // Also trigger heartbeat immediately so the agent processes the completion
-    execFile("openclaw", ["system", "event", "--text", "Session completed", "--mode", "now"], (err) => {
+    console.log(`[SessionManager] Triggering agent event for session=${session.id}`);
+    execFile("openclaw", ["system", "event", "--text", eventText, "--mode", "now"], (err) => {
       if (err) {
-        console.error(`[SessionManager] Failed to trigger heartbeat for completed session=${session.id}: ${err.message}`);
+        console.error(`[SessionManager] Failed to trigger agent event for completed session=${session.id}: ${err.message}`);
       } else {
         console.log(`[SessionManager] completion event triggered via system event for session=${session.id}`);
       }
@@ -380,8 +298,7 @@ export class SessionManager {
   /**
    * Trigger an OpenClaw event when a session is waiting for user input.
    * Works for ALL session types (single-turn and multi-turn).
-   * Routes via the origin channel (Telegram, etc.) so the notification
-   * wakes the agent through normal channel routing.
+   * Uses `openclaw system event` (broadcast) to wake the orchestrator agent.
    */
   private triggerWaitingForInputEvent(session: Session): void {
     // Debounce: skip if a waiting-for-input event was sent recently for this session
@@ -412,6 +329,7 @@ export class SessionManager {
       `Use claude_respond(session='${session.id}', message='...') to send a reply, or claude_output(session='${session.id}') to see full context.`,
     ].join("\n");
 
+    console.log(`[SessionManager] Triggering waiting-for-input event for session=${session.id}`);
     execFile("openclaw", ["system", "event", "--text", eventText, "--mode", "now"], (err, _stdout, stderr) => {
       if (err) {
         console.error(`[SessionManager] Failed to trigger waiting-for-input event for session=${session.id}: ${err.message}`);

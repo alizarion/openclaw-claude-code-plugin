@@ -118,6 +118,9 @@ export class Session {
   budgetExhausted: boolean = false;
   private waitingForInputFired: boolean = false;
 
+  // Auto-respond safety cap: tracks consecutive agent-initiated responds
+  autoRespondCount: number = 0;
+
   // Event callbacks
   onOutput?: (text: string) => void;
   onToolUse?: (toolName: string, toolInput: any) => void;
@@ -447,6 +450,20 @@ export class Session {
    */
   saveFgOutputOffset(channelId: string): void {
     this.fgOutputOffsets.set(channelId, this.outputBuffer.length);
+  }
+
+  /**
+   * Increment the auto-respond counter (called on each agent-initiated claude_respond tool call).
+   */
+  incrementAutoRespond(): void {
+    this.autoRespondCount++;
+  }
+
+  /**
+   * Reset the auto-respond counter (called when the user sends a message via /claude_respond command).
+   */
+  resetAutoRespond(): void {
+    this.autoRespondCount = 0;
   }
 
   get duration(): number {

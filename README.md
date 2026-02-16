@@ -17,9 +17,11 @@ Launch, monitor, and interact with multiple Claude Code SDK sessions directly fr
 - **Foreground catchup** — When foregrounding, missed background output is displayed before live streaming begins
 - **Multi-turn conversations** — Sessions are multi-turn by default; send follow-up messages, refine instructions, or have iterative dialogues with a running agent. Set `multi_turn_disabled: true` for fire-and-forget sessions
 - **Session resume & fork** — Resume any completed session or fork it into a new branch of conversation
-- **Pre-launch safety checks** — Four mandatory guards (autonomy skill, heartbeat config, HEARTBEAT.md, agentChannels mapping) ensure every agent is properly configured before spawning sessions
+- **Pre-launch safety checks** — Five mandatory guards (autonomy skill with 👋/🤖 notification format, heartbeat config, heartbeat interval ≥ 60m, no agent gateway restart, agentChannels mapping) ensure every agent is properly configured before spawning sessions
+- **maxAutoResponds** — Limits consecutive agent auto-responds per session (default: 10). Resets when the user responds via slash command. Blocks `claude_respond` tool when the limit is reached
 - **Real-time notifications** — Completion alerts, budget exhaustion warnings, long-running reminders, and live tool-use indicators
-- **Background visibility** — See `🔔 Claude asks:` and `↩️ Responded:` in-channel even when sessions run in the background
+- **Background notifications** — In background mode, only 🔔 (Claude asks) and ↩️ (Responded) are sent directly. Completion/failure/budget notifications are suppressed — the orchestrator agent handles summaries
+- **Event routing** — `triggerAgentEvent` and `triggerWaitingForInputEvent` use `openclaw system event --mode now` (broadcast). No `routeEventMessage` — events are broadcast and agents filter by session ownership
 - **Waiting-for-input wake events** — `openclaw system event` fired when sessions become idle, waking the orchestrator agent
 - **Multi-agent support** — Route notifications to the correct agent/chat via `agentChannels` workspace mapping with longest-prefix matching
 - **Triple interface** — Every operation available as a chat command, agent tool, and gateway RPC method
@@ -63,13 +65,13 @@ Ensure `openclaw` CLI is available in your PATH — the plugin shells out to `op
 
 ## Pre-Launch Safety Checks
 
-When an agent calls the `claude_launch` tool, four mandatory guards run before any session is spawned. If any check fails, the launch is blocked and an actionable error message is returned telling the agent exactly how to fix the issue. These checks are enforced only on the `claude_launch` tool — the gateway RPC `claude-code.launch` method and `/claude` chat command skip them.
+When an agent calls the `claude_launch` tool, five mandatory guards run before any session is spawned. If any check fails, the launch is blocked and an actionable error message is returned telling the agent exactly how to fix the issue. These checks are enforced only on the `claude_launch` tool — the gateway RPC `claude-code.launch` method and `/claude` chat command skip them.
 
 ### 1. Autonomy Skill
 
 **Checks for:** `{agentWorkspace}/skills/claude-code-autonomy/SKILL.md`
 
-The autonomy skill defines how the agent handles Claude Code interactions (auto-respond to routine questions, forward architecture decisions to the user, etc.). Without it, the agent is told to ask the user what level of autonomy they want, then create the skill directory with `SKILL.md` and `autonomy.md`.
+The autonomy skill defines how the agent handles Claude Code interactions (auto-respond to routine questions, forward architecture decisions to the user, etc.). The skill must include 👋/🤖 notification format guidance for user-facing messages. Without it, the agent is told to ask the user what level of autonomy they want, then create the skill directory with `SKILL.md` and `autonomy.md`.
 
 ### 2. Heartbeat Configuration
 
@@ -78,16 +80,22 @@ The autonomy skill defines how the agent handles Claude Code interactions (auto-
 Heartbeat enables automatic "waiting for input" notifications so the agent gets nudged when a Claude Code session needs attention. The expected config:
 
 ```json
-{ "heartbeat": { "every": "5s", "target": "last" } }
+{ "heartbeat": { "every": "60m", "target": "last" } }
 ```
 
-### 3. HEARTBEAT.md Content
+### 3. Heartbeat Interval Validation
 
-**Checks for:** `{agentWorkspace}/HEARTBEAT.md` with real content (not just comments, blank lines, or whitespace — validated via regex `/^(\s|#.*)*$/`).
+**Checks for:** Heartbeat interval ≥ 60 minutes. A 5-second interval (`"every": "5s"`) is explicitly blocked.
 
-The heartbeat file tells the agent what to do during heartbeat cycles — e.g. check for waiting Claude Code sessions, read their output, and respond or notify the user.
+The init prompt recommends `"every": "60m"`. Short intervals cause excessive heartbeat cycles and are not suitable for production agent operation.
 
-### 4. agentChannels Mapping
+### 4. Gateway Restart Guard
+
+**Checks for:** The agent must NOT attempt to restart the OpenClaw gateway itself.
+
+If the gateway needs restarting (e.g., after config changes), the agent must ask the user to do it. This prevents agents from disrupting other running agents or services by cycling the gateway process.
+
+### 5. agentChannels Mapping
 
 **Checks for:** A matching entry in `pluginConfig.agentChannels` for the session's working directory, resolved via `resolveAgentChannel(workdir)`.
 
@@ -102,6 +110,7 @@ Configuration is defined in `openclaw.plugin.json` and passed to the plugin via 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `maxSessions` | `number` | `5` | Max concurrently active sessions. |
+| `maxAutoResponds` | `number` | `10` | Max consecutive agent auto-responds per session. Resets on user `/claude_respond`. Blocks `claude_respond` tool when reached. |
 | `defaultBudgetUsd` | `number` | `5` | Default max budget per session in USD. |
 | `defaultModel` | `string` | — | Default model (e.g. `"sonnet"`, `"opus"`). |
 | `defaultWorkdir` | `string` | — | Default working directory. Falls back to `process.cwd()`. |
@@ -206,8 +215,8 @@ Each agent needs three things configured:
    {
      "agents": {
        "list": [
-         { "id": "seo-bot", "heartbeat": { "every": "5s", "target": "last" } },
-         { "id": "devops-bot", "heartbeat": { "every": "5s", "target": "last" } }
+         { "id": "seo-bot", "heartbeat": { "every": "60m", "target": "last" } },
+         { "id": "devops-bot", "heartbeat": { "every": "60m", "target": "last" } }
        ]
      }
    }
