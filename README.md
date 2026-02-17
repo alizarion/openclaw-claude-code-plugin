@@ -19,10 +19,10 @@ Launch, monitor, and interact with multiple Claude Code SDK sessions directly fr
 - **Session resume & fork** — Resume any completed session or fork it into a new branch of conversation
 - **Pre-launch safety checks** — Five mandatory guards (autonomy skill with 👋/🤖 notification format, heartbeat config, heartbeat interval ≥ 60m, no agent gateway restart, agentChannels mapping) ensure every agent is properly configured before spawning sessions
 - **maxAutoResponds** — Limits consecutive agent auto-responds per session (default: 10). Resets when the user responds via slash command. Blocks `claude_respond` tool when the limit is reached
-- **Real-time notifications** — Completion alerts, budget exhaustion warnings, long-running reminders, and live tool-use indicators
-- **Background notifications** — In background mode, only 🔔 (Claude asks) and ↩️ (Responded) are sent directly. Completion/failure/budget notifications are suppressed — the orchestrator agent handles summaries
-- **Event routing** — `triggerAgentEvent` and `triggerWaitingForInputEvent` use `openclaw system event --mode now` (broadcast). No `routeEventMessage` — events are broadcast and agents filter by session ownership
-- **Waiting-for-input wake events** — `openclaw system event` fired when sessions become idle, waking the orchestrator agent
+- **3-level notification architecture** — Level 1: mandatory Telegram lifecycle notifications (launched, Claude asks, responded, completed, failed/killed). Level 2: optional foreground streaming during `claude_fg`. Level 3: agent behavior (not plugin responsibility)
+- **Agent-agnostic notifications** — The plugin ALWAYS sends Level 1 notifications to Telegram. It doesn't decide what to show — it's a transparent transport layer
+- **Targeted agent wake** — Uses `openclaw agent --agent <id> --message` with `--deliver` for real-time notifications (3-7 second delivery). Agent IPC wake + Telegram delivery in a single CLI call
+- **Waiting-for-input wake events** — Fired when sessions become idle, waking the orchestrator agent to respond or forward to user
 - **Multi-agent support** — Route notifications to the correct agent/chat via `agentChannels` workspace mapping with longest-prefix matching
 - **Triple interface** — Every operation available as a chat command, agent tool, and gateway RPC method
 - **Automatic cleanup** — Completed sessions garbage-collected after 1 hour; persisted IDs survive for resume
@@ -180,6 +180,40 @@ If the gateway needs restarting (e.g., after config changes), the agent must ask
 **Checks for:** A matching entry in `pluginConfig.agentChannels` for the session's working directory, resolved via `resolveAgentChannel(workdir)`.
 
 The workspace must be mapped to a notification channel so session events (completion, waiting-for-input, etc.) reach the correct agent/chat. Uses longest-prefix matching with trailing slash normalisation.
+
+---
+
+## Notification Architecture
+
+### Level 1 — Session Lifecycle Notifications (Always sent)
+
+These notifications are ALWAYS sent to the Telegram channel of the agent that launched the session, regardless of foreground/background mode. They are sent via `openclaw message send`.
+
+| Emoji | Event | Trigger | Agent Reaction Required |
+|-------|-------|---------|------------------------|
+| ↩️ | Launched | Session started via `claude_launch` | No (informational) |
+| 🔔 | Claude asks | Claude Code is waiting for input (question or permission) | Yes — agent must `claude_respond` or forward to user |
+| ↩️ | Responded | Agent replied via `claude_respond` | No (informational) |
+| ✅ | Completed | Session finished successfully | Yes — agent must `claude_output` and summarize |
+| ❌ | Failed | Session failed | No (informational) |
+| ⛔ | Killed | Session was terminated | No (informational) |
+
+### Level 2 — Foreground Streaming (Optional)
+
+When the user activates `claude_fg`, real-time tool calls, reasoning, and read/write operations are streamed. These are for live monitoring only.
+
+### Level 3 — Agent Behavior (Not plugin responsibility)
+
+The plugin is **agent-agnostic**. It always sends Level 1 notifications and wakes the agent for events that require reaction (🔔, ✅). How the agent reacts is determined by the agent's own configuration (HEARTBEAT.md, AGENTS.md), not by the plugin.
+
+### Wake Mechanism
+
+For notifications requiring agent reaction (🔔 Claude asks, ✅ Completed):
+1. Telegram notification sent first (fire-and-forget via `openclaw message send`)
+2. IPC wake sent via detached subprocess (`openclaw agent --agent <id> --message <text> --deliver`) — non-blocking, agent's response is delivered to Telegram
+
+For informational notifications (↩️, ❌, ⛔):
+1. Telegram notification sent only (no IPC wake needed)
 
 ---
 

@@ -132,8 +132,8 @@ export class NotificationRouter {
    *
    * For background sessions, we store the originating channel in session metadata.
    */
-  onSessionComplete(session: Session, originChannel?: string): void {
-    console.log(`[NotificationRouter] onSessionComplete session=${session.id} (${session.name}), status=${session.status}, originChannel=${originChannel}, fgChannels=${JSON.stringify([...session.foregroundChannels])}`);
+  onSessionComplete(session: Session): void {
+    console.log(`[NotificationRouter] onSessionComplete session=${session.id} (${session.name}), status=${session.status}, fgChannels=${JSON.stringify([...session.foregroundChannels])}`);
     // Flush any pending foreground output first
     for (const channelId of session.foregroundChannels) {
       this.flushDebounced(session.id, channelId);
@@ -141,11 +141,8 @@ export class NotificationRouter {
 
     const msg = formatCompletionNotification(session);
 
-    // Collect all channels to notify (foreground + origin)
-    const channels = new Set(session.foregroundChannels);
-    if (originChannel && session.foregroundChannels.size > 0) channels.add(originChannel);
-
-    for (const channelId of channels) {
+    // Notify foreground channels only — background sessions are handled by wakeAgent()
+    for (const channelId of session.foregroundChannels) {
       this.sendMessage(channelId, msg);
     }
 
@@ -158,7 +155,7 @@ export class NotificationRouter {
    * This is effectively handled by onSessionComplete since it's a result event,
    * but we expose it separately for clarity and custom formatting.
    */
-  onBudgetExhausted(session: Session, originChannel?: string): void {
+  onBudgetExhausted(session: Session): void {
     for (const channelId of session.foregroundChannels) {
       this.flushDebounced(session.id, channelId);
     }
@@ -169,10 +166,8 @@ export class NotificationRouter {
       `   📁 ${session.workdir}`,
     ].join("\n");
 
-    const channels = new Set(session.foregroundChannels);
-    if (originChannel && session.foregroundChannels.size > 0) channels.add(originChannel);
-
-    for (const channelId of channels) {
+    // Notify foreground channels only — background sessions are handled by wakeAgent()
+    for (const channelId of session.foregroundChannels) {
       this.sendMessage(channelId, msg);
     }
 
@@ -186,44 +181,22 @@ export class NotificationRouter {
    * needs a permission decision, or finished a turn in multi-turn mode).
    * Notifies foreground and origin channels so the user knows Claude needs a response.
    */
-  onWaitingForInput(session: Session, originChannel?: string): void {
-    console.log(`[NotificationRouter] onWaitingForInput session=${session.id} (${session.name}), originChannel=${originChannel}, fgChannels=${JSON.stringify([...session.foregroundChannels])}`);
+  onWaitingForInput(session: Session): void {
+    console.log(`[NotificationRouter] onWaitingForInput session=${session.id} (${session.name}), fgChannels=${JSON.stringify([...session.foregroundChannels])}`);
 
     // Flush any pending foreground output first
     for (const channelId of session.foregroundChannels) {
       this.flushDebounced(session.id, channelId);
     }
 
-    // Build notification message with last output as context
-    const lastOutput = session.getOutput(5);
-    let preview = lastOutput.join("\n");
-    if (preview.length > 500) {
-      preview = preview.slice(-500);
-    }
-
-    // Determine which channels are background-only (origin but not foreground)
-    const fgChannels = new Set(session.foregroundChannels);
-    const allChannels = new Set(session.foregroundChannels);
-    if (originChannel) allChannels.add(originChannel);
-
-    for (const channelId of allChannels) {
-      const isBg = !fgChannels.has(channelId);
-      if (isBg) {
-        // Background channel: show the full question so user can follow along
-        const msg = [
-          `🔔 [${session.name}] Claude asks:`,
-          preview || "(no output captured)",
-        ].join("\n");
-        this.sendMessage(channelId, msg);
-      } else {
-        // Foreground channel: compact notification (output already streamed)
-        const duration = formatDuration(session.duration);
-        const msg = [
-          `💬 Session ${session.name} [${session.id}] is waiting for input (${duration})`,
-          `   Use claude_respond to reply.`,
-        ].join("\n");
-        this.sendMessage(channelId, msg);
-      }
+    // Notify foreground channels only — background notification is handled by wakeAgent()
+    for (const channelId of session.foregroundChannels) {
+      const duration = formatDuration(session.duration);
+      const msg = [
+        `💬 Session ${session.name} [${session.id}] is waiting for input (${duration})`,
+        `   Use claude_respond to reply.`,
+      ].join("\n");
+      this.sendMessage(channelId, msg);
     }
   }
 

@@ -1,4 +1,4 @@
-import { sessionManager, notificationRouter } from "../shared";
+import { sessionManager } from "../shared";
 
 export function registerClaudeRespondCommand(api: any): void {
   api.registerCommand({
@@ -66,13 +66,13 @@ export function registerClaudeRespondCommand(api: any): void {
         // Reset auto-respond counter (user-initiated)
         session.resetAutoRespond();
 
-        // Display the response in the origin channel so the conversation is visible
-        if (notificationRouter && session.originChannel) {
+        // Level 1: Send ↩️ Responded notification to Telegram
+        if (sessionManager) {
           const respondMsg = [
             `↩️ [${session.name}] Responded:`,
-            message,
+            message.length > 200 ? message.slice(0, 200) + "..." : message,
           ].join("\n");
-          notificationRouter.emitToChannel(session.originChannel, respondMsg);
+          sessionManager.deliverToTelegram(session, respondMsg, "responded");
         }
 
         const msgSummary =

@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { sessionManager, notificationRouter, pluginConfig, resolveOriginChannel, resolveAgentChannel } from "../shared";
+import { sessionManager, pluginConfig, resolveAgentChannel } from "../shared";
 import type { OpenClawPluginToolContext } from "../types";
 
 export function makeClaudeRespondTool(ctx?: OpenClawPluginToolContext) {
@@ -112,26 +112,13 @@ export function makeClaudeRespondTool(ctx?: OpenClawPluginToolContext) {
           session.incrementAutoRespond();
         }
 
-        // Resolve origin channel with fallback chain
-        let originChannel = resolveOriginChannel(
-          { id: _id },
-          fallbackChannel || resolveAgentChannel(session.workdir),
-        );
-        if (originChannel === "unknown") {
-          const agentChannel = resolveAgentChannel(session.workdir);
-          if (agentChannel) {
-            originChannel = agentChannel;
-          }
-        }
-
-        // Display the response in the origin channel so the conversation is visible
-        const notifyChannel = originChannel !== "unknown" ? originChannel : session.originChannel;
-        if (notificationRouter && notifyChannel) {
+        // Level 1: Send ↩️ Responded notification to Telegram
+        if (sessionManager) {
           const respondMsg = [
             `↩️ [${session.name}] Responded:`,
-            params.message,
+            params.message.length > 200 ? params.message.slice(0, 200) + "..." : params.message,
           ].join("\n");
-          notificationRouter.emitToChannel(notifyChannel, respondMsg);
+          sessionManager.deliverToTelegram(session, respondMsg, "responded");
         }
 
         const msgSummary =

@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import { Session } from "./session";
 import { generateSessionName } from "./shared";
 import type { NotificationRouter } from "./notifications";
@@ -146,12 +146,12 @@ export class SessionManager {
 
       session.onBudgetExhausted = () => {
         console.log(`[SessionManager] session.onBudgetExhausted fired for session=${session.id}`);
-        nr.onBudgetExhausted(session, session.originChannel);
+        nr.onBudgetExhausted(session);
       };
 
       session.onWaitingForInput = () => {
         console.log(`[SessionManager] session.onWaitingForInput fired for session=${session.id}`);
-        nr.onWaitingForInput(session, session.originChannel);
+        nr.onWaitingForInput(session);
 
         // Wake the orchestrator agent so it can forward the question to the user
         this.triggerWaitingForInputEvent(session);
@@ -165,7 +165,7 @@ export class SessionManager {
 
         // Don't double-notify if budget exhaustion already handled
         if (!session.budgetExhausted) {
-          nr.onSessionComplete(session, session.originChannel);
+          nr.onSessionComplete(session);
         }
 
         // Auto-trigger OpenClaw agent to process the completed session
@@ -176,6 +176,17 @@ export class SessionManager {
     }
 
     session.start();
+
+    // Level 1: Send ↩️ Launched notification to Telegram (informational, no IPC wake)
+    const promptSummary = session.prompt.length > 80
+      ? session.prompt.slice(0, 80) + "..."
+      : session.prompt;
+    this.deliverToTelegram(
+      session,
+      `↩️ [${session.name}] Launched:\n${promptSummary}`,
+      "launched",
+    );
+
     return session;
   }
 
@@ -273,51 +284,94 @@ export class SessionManager {
   }
 
   /**
-   * Send a wake message to the agent that owns this session.
+   * Send a Telegram notification AND wake the agent via detached subprocess.
+   *
+   * Used for notifications that REQUIRE agent reaction:
+   *   🔔 Claude asks (waiting for input) — agent must respond or forward to user
+   *   ✅ Claude finished (completed)     — agent must summarize the result
    *
    * Strategy:
-   *  1. If originAgentId is set → targeted `openclaw agent --agent <id> --message`.
-   *     On failure, falls back to broadcast system event.
-   *  2. If originAgentId is not set (e.g. non-agent launches, direct user invocations)
-   *     → broadcast `openclaw system event --mode now` as last resort.
+   *  1. ALWAYS send Telegram notification first via deliverToTelegram()
+   *     (fire-and-forget, uses openclaw message send, never blocks on agent).
+   *  2. Then spawn a detached `openclaw agent --agent <id> --message` process.
+   *     The process runs independently (detached + unref'd) — the plugin does not
+   *     wait for it. No error callback, no timeout. Fire-and-forget.
+   *  3. If no agentId, fall back to broadcast system event via fireSystemEventWithRetry().
+   *
+   * Call sites: triggerWaitingForInputEvent() and triggerAgentEvent() (completed branch).
    */
-  private wakeAgent(session: Session, eventText: string, label: string): void {
-    const agentId = session.originAgentId?.trim();
+  /**
+   * Parse a session's originChannel into --deliver CLI args.
+   *
+   * originChannel formats:
+   *   "telegram|accountId|chatId"  → 3 segments (full)
+   *   "telegram|chatId"            → 2 segments (no account)
+   *
+   * Returns empty array if channel is missing/invalid (safe no-op).
+   */
+  private buildDeliverArgs(originChannel?: string): string[] {
+    if (!originChannel || originChannel === "unknown" || originChannel === "gateway") {
+      return [];
+    }
+    const parts = originChannel.split("|");
+    if (parts.length < 2) {
+      return [];
+    }
+    if (parts.length >= 3) {
+      // "channel|account|target" (target may itself contain pipes, so rejoin)
+      return ["--deliver", "--reply-channel", parts[0], "--reply-account", parts[1], "--reply-to", parts.slice(2).join("|")];
+    }
+    // "channel|target" (no account)
+    return ["--deliver", "--reply-channel", parts[0], "--reply-to", parts[1]];
+  }
 
+  private wakeAgent(session: Session, eventText: string, telegramText: string, label: string): void {
+    // Step 1: Always send Telegram notification first (fire-and-forget, never blocks on agent)
+    this.deliverToTelegram(session, telegramText, label);
+
+    // Step 2: IPC wake — send message to the agent (may timeout, that's OK)
+    const agentId = session.originAgentId?.trim();
     if (!agentId) {
       console.warn(`[SessionManager] No originAgentId for ${label} session=${session.id}, falling back to system event`);
       this.fireSystemEventWithRetry(eventText, label, session.id);
       return;
     }
 
-    // Parse originChannel for delivery routing (e.g. "telegram|default|123456" or "telegram|123456")
-    const deliverArgs: string[] = [];
-    const originChannel = session.originChannel;
-    if (originChannel && originChannel !== "unknown") {
-      const parts = originChannel.split("|");
-      if (parts.length >= 3) {
-        // Format: channel|account|target[|extra...] (e.g. "telegram|default|1783869317")
-        deliverArgs.push("--deliver", "--reply-channel", parts[0], "--reply-account", parts[1], "--reply-to", parts.slice(2).join("|"));
-      } else if (parts.length === 2) {
-        // Format: channel|target (e.g. "telegram|1783869317")
-        deliverArgs.push("--deliver", "--reply-channel", parts[0], "--reply-to", parts[1]);
-      } else {
-        console.warn(`[SessionManager] originChannel "${originChannel}" has unrecognized format (${parts.length} segments), skipping --deliver for ${label} session=${session.id}`);
-      }
+    const deliverArgs = this.buildDeliverArgs(session.originChannel);
+    const child = spawn("openclaw", ["agent", "--agent", agentId, "--message", eventText, ...deliverArgs], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    console.log(`[SessionManager] Spawned detached wake for agent=${agentId}, ${label} session=${session.id} (pid=${child.pid}, deliver=${deliverArgs.length > 0})`);
+  }
+
+  /**
+   * Send an informational notification to Telegram WITHOUT waking the agent.
+   *
+   * Used for notifications that are user-monitoring only (Level 1 — deliver only):
+   *   ↩️ Launched  — session started with initial prompt
+   *   ↩️ Responded — user replied to a waiting session
+   *   ❌ Failed    — session failed
+   *   ⛔ Killed    — session was killed
+   *
+   * Also called by wakeAgent() to send Telegram notification before IPC wake.
+   *
+   * Routes through NotificationRouter.emitToChannel() → sendMessage callback →
+   * `openclaw message send` CLI. The sendMessage callback handles channel format
+   * parsing and fallback channels when originChannel is "unknown".
+   *
+   * External callers: src/commands/claude-respond.ts, src/tools/claude-respond.ts
+   */
+  deliverToTelegram(session: Session, notificationText: string, label: string): void {
+    if (!this.notificationRouter) {
+      console.warn(`[SessionManager] Cannot deliver ${label} to Telegram for session=${session.id} (no NotificationRouter)`);
+      return;
     }
 
-    console.log(`[SessionManager] Waking agent=${agentId} for ${label} session=${session.id}${deliverArgs.length ? ` with deliver to ${originChannel}` : ""}`);
-    execFile("openclaw", ["agent", "--agent", agentId, "--message", eventText, ...deliverArgs], { timeout: WAKE_CLI_TIMEOUT_MS }, (err, _stdout, stderr) => {
-      if (err) {
-        console.error(`[SessionManager] Failed to wake agent ${agentId} for ${label} session=${session.id}: ${err.message}`);
-        if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
-        // Fallback to broadcast system event on targeted wake failure (with retry)
-        console.warn(`[SessionManager] Falling back to system event after targeted wake failure for ${label} session=${session.id}`);
-        this.fireSystemEventWithRetry(eventText, label, session.id);
-      } else {
-        console.log(`[SessionManager] Agent ${agentId} woken successfully for ${label} session=${session.id}`);
-      }
-    });
+    const channel = session.originChannel || "unknown";
+    console.log(`[SessionManager] Delivering ${label} to Telegram for session=${session.id} via channel=${channel}`);
+    this.notificationRouter.emitToChannel(channel, notificationText);
   }
 
   /**
@@ -352,6 +406,11 @@ export class SessionManager {
 
   /**
    * Trigger an OpenClaw agent event when a Claude Code session completes.
+   *
+   * For ✅ completed sessions: uses wakeAgent() (Telegram notification + IPC wake)
+   *   because the agent must summarize the result. Telegram is sent first, then IPC.
+   * For ❌ failed / ⛔ killed sessions: uses deliverToTelegram() (Telegram only)
+   *   because these are informational — no agent reaction needed.
    */
   private triggerAgentEvent(session: Session): void {
     const status = session.status;
@@ -363,19 +422,49 @@ export class SessionManager {
       preview = preview.slice(-500);
     }
 
-    const eventText = [
-      `Claude Code session completed.`,
-      `Name: ${session.name} | ID: ${session.id}`,
-      `Status: ${status}`,
-      ``,
-      `Output preview:`,
-      preview,
-      ``,
-      `Use claude_output(session='${session.id}', full=true) to get the full result and transmit the analysis to the user.`,
-    ].join("\n");
+    if (status === "completed") {
+      // ✅ Completed — agent must summarize (Telegram first, then IPC wake)
+      const eventText = [
+        `Claude Code session completed.`,
+        `Name: ${session.name} | ID: ${session.id}`,
+        `Status: ${status}`,
+        ``,
+        `Output preview:`,
+        preview,
+        ``,
+        `Use claude_output(session='${session.id}', full=true) to get the full result and transmit the analysis to the user.`,
+      ].join("\n");
 
-    console.log(`[SessionManager] Triggering agent event for completed session=${session.id}`);
-    this.wakeAgent(session, eventText, "completed");
+      const cleanPreview = preview.replace(/[*`_~]/g, "");
+      const telegramLines = [
+        `✅ [${session.name}] Completed`,
+        `   📁 ${session.workdir}`,
+        `   💰 $${(session.costUsd ?? 0).toFixed(4)}`,
+      ];
+      if (cleanPreview.trim()) {
+        telegramLines.push(``, cleanPreview);
+      }
+      const telegramText = telegramLines.join("\n");
+
+      console.log(`[SessionManager] Triggering agent wake for completed session=${session.id}`);
+      this.wakeAgent(session, eventText, telegramText, "completed");
+    } else {
+      // ❌ Failed / ⛔ Killed — informational only (Telegram deliver, no IPC wake)
+      const emoji = status === "killed" ? "⛔" : "❌";
+      const promptSummary = session.prompt.length > 60
+        ? session.prompt.slice(0, 60) + "..."
+        : session.prompt;
+
+      const notificationText = [
+        `${emoji} [${session.name}] ${status === "killed" ? "Killed" : "Failed"}`,
+        `   📁 ${session.workdir}`,
+        `   📝 "${promptSummary}"`,
+        ...(session.error ? [`   ⚠️ ${session.error}`] : []),
+      ].join("\n");
+
+      console.log(`[SessionManager] Delivering ${status} notification for session=${session.id}`);
+      this.deliverToTelegram(session, notificationText, status);
+    }
 
     // Clean up debounce state — session is done, no more waiting events
     this.lastWaitingEventTimestamps.delete(session.id);
@@ -385,26 +474,33 @@ export class SessionManager {
   /**
    * Trigger an OpenClaw event when a session is waiting for user input.
    * Works for ALL session types (single-turn and multi-turn).
+   *
+   * Telegram notification is sent UNCONDITIONALLY (no debounce) so the user
+   * always sees it. The IPC wake is debounced (5s) to avoid spamming the agent.
    */
   private triggerWaitingForInputEvent(session: Session): void {
-    // Debounce: skip if a waiting-for-input event was sent recently for this session
-    const now = Date.now();
-    const lastTs = this.lastWaitingEventTimestamps.get(session.id);
-    if (lastTs && now - lastTs < WAITING_EVENT_DEBOUNCE_MS) {
-      console.log(`[SessionManager] Debounced waiting-for-input event for session=${session.id} (last sent ${now - lastTs}ms ago)`);
-      return;
-    }
-    this.lastWaitingEventTimestamps.set(session.id, now);
-
-    // Build an output preview: last 5 lines, capped at 500 chars
+    // Build output preview: last 5 lines, capped at 500 chars
     const lastLines = session.getOutput(5);
     let preview = lastLines.join("\n");
     if (preview.length > 500) {
       preview = preview.slice(-500);
     }
 
-    const sessionType = session.multiTurn ? "Multi-turn session" : "Session";
+    // Telegram text — used by both debounced and non-debounced paths
+    const telegramText = `🔔 [${session.name}] Claude asks:\n${preview.length > 200 ? preview.slice(-200) : preview}`;
 
+    // Debounce check: if IPC wake was sent recently, send Telegram only and skip IPC wake
+    const now = Date.now();
+    const lastTs = this.lastWaitingEventTimestamps.get(session.id);
+    if (lastTs && now - lastTs < WAITING_EVENT_DEBOUNCE_MS) {
+      console.log(`[SessionManager] Debounced wake for session=${session.id} (last sent ${now - lastTs}ms ago), sending Telegram only`);
+      this.deliverToTelegram(session, telegramText, "waiting");
+      return;
+    }
+    this.lastWaitingEventTimestamps.set(session.id, now);
+
+    // Build IPC event text for the agent
+    const sessionType = session.multiTurn ? "Multi-turn session" : "Session";
     const eventText = [
       `${sessionType} is waiting for input.`,
       `Name: ${session.name} | ID: ${session.id}`,
@@ -415,8 +511,8 @@ export class SessionManager {
       `Use claude_respond(session='${session.id}', message='...') to send a reply, or claude_output(session='${session.id}') to see full context.`,
     ].join("\n");
 
-    console.log(`[SessionManager] Triggering waiting-for-input event for session=${session.id}`);
-    this.wakeAgent(session, eventText, "waiting");
+    // wakeAgent() handles: (1) Telegram delivery, (2) detached IPC wake
+    this.wakeAgent(session, eventText, telegramText, "waiting");
   }
 
   /**
@@ -501,7 +597,7 @@ export class SessionManager {
     // Persist and notify — killed sessions don't trigger onComplete
     this.persistSession(session);
     if (this.notificationRouter) {
-      this.notificationRouter.onSessionComplete(session, session.originChannel);
+      this.notificationRouter.onSessionComplete(session);
     }
     this.triggerAgentEvent(session);
     return true;
