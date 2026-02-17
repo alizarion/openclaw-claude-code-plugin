@@ -4,7 +4,19 @@ When an agent calls the `claude_launch` tool, **4 mandatory guards** run before 
 
 These checks are enforced only on the `claude_launch` **tool** (agent callers). The gateway RPC method (`claude-code.launch`) and chat command (`/claude`) skip them — those callers are assumed to be properly configured.
 
-> **Source of truth:** `src/tools/claude-launch.ts` (lines 143-392)
+> **Source of truth:** `src/tools/claude-launch.ts` (lines 143-399)
+
+### Skipping Safety Checks
+
+Set `skipSafetyChecks: true` in the plugin config to bypass **all** pre-launch guards. When enabled, the plugin logs `[claude-launch] Safety checks skipped (skipSafetyChecks=true)` and proceeds directly to session launch.
+
+```json
+{
+  "skipSafetyChecks": true
+}
+```
+
+> **Warning:** This disables all safety guards — autonomy skill, heartbeat config, HEARTBEAT.md, and agentChannels mapping. Use only for development or testing environments where you understand the risks.
 
 ---
 

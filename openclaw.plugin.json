@@ -59,6 +59,11 @@
         "type": "number",
         "default": 10,
         "description": "Maximum consecutive auto-responds (agent tool calls) per session before requiring user input via /claude-respond"
+      },
+      "skipSafetyChecks": {
+        "type": "boolean",
+        "default": false,
+        "description": "Skip ALL pre-launch safety guards (autonomy skill, heartbeat, HEARTBEAT.md, agentChannels). Use only for development/testing."
       }
     }
   }

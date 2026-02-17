@@ -109,4 +109,11 @@ export interface PluginConfig {
    * message via the /claude_respond command. Default: 10.
    */
   maxAutoResponds: number;
+
+  /**
+   * Skip ALL pre-launch safety guards (autonomy skill, heartbeat config,
+   * HEARTBEAT.md, agentChannels mapping). Useful for development/testing.
+   * Default: false.
+   */
+  skipSafetyChecks?: boolean;
 }

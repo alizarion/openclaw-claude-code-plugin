@@ -140,110 +140,217 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
           }
         }
 
-        // Guard: require autonomy skill in the agent's workspace before spawning.
-        // The skill defines how the agent should handle Claude Code interactions
-        // (auto-respond, ask user, etc.). Without it, prompt the agent to set it up.
+        // --- Pre-launch safety guards ---
+        // All guards can be skipped via pluginConfig.skipSafetyChecks for dev/testing.
         const agentWorkspace = ctx.workspaceDir || workdir;
-        const autonomySkillPath = join(agentWorkspace, "skills", "claude-code-autonomy", "SKILL.md");
-        if (!existsSync(autonomySkillPath)) {
-          console.log(`[claude-launch] Autonomy skill not found at ${autonomySkillPath} — blocking launch`);
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: [
-                  `ERROR: Launch blocked — no autonomy skill found.`,
-                  ``,
-                  `No autonomy skill found. You MUST ask the user what level of autonomy they want to give Claude Code sessions. Then create the skill at skills/claude-code-autonomy/ with their preferences. Only then can you launch sessions.`,
-                  ``,
-                  `Do NOT create the skill without asking the user first. Ask them how they want you to handle Claude Code interactions. For example:`,
-                  `- "Respond to everything automatically except architecture choices"`,
-                  `- "Always ask me before responding"`,
-                  `- "Handle everything yourself, just notify me when done"`,
-                  ``,
-                  `After the user responds, create the skill:`,
-                  `1. Create directory: skills/claude-code-autonomy/`,
-                  `2. Create SKILL.md with structured rules based on the user's response`,
-                  `3. Create autonomy.md with the user's raw preferences`,
-                  `4. Then re-call claude_launch to start the session.`,
-                  ``,
-                  `The skill MUST also define these notification formats that the agent uses:`,
-                  ``,
-                  `👋 [session-name] Important question — needs your decision:`,
-                  `> "question text"`,
-                  `(Used when Claude asks something that requires the user's input — architecture, destructive ops, ambiguous requirements)`,
-                  ``,
-                  `🤖 [session-name] finished:`,
-                  `Summary of what Claude did, files changed, issues found.`,
-                  `(Used when a session completes — the agent reads the output and summarizes)`,
-                  ``,
-                  `Note: 🔔 Claude asks and ↩️ Responded notifications are handled automatically by the plugin. The skill only needs to define rules for 👋 (when to forward vs auto-respond) and 🤖 (summary format).`,
-                ].join("\n"),
-              },
-            ],
-          };
-        }
 
-        // Guard: require heartbeat configuration for the agent before spawning.
-        // Heartbeat enables automatic "waiting for input" notifications so the
-        // agent gets nudged when a Claude Code session needs attention.
-        // Prefer ctx.agentId (authoritative) over resolveAgentId (may return account alias)
-        const agentId = ctx.agentId || resolveAgentId(agentWorkspace);
-        if (agentId && !ctx.agentId) {
-          console.warn(`[claude-launch] Using resolveAgentId fallback for agentId="${agentId}" — this may be an account alias, not the real agent ID`);
-        }
-        if (agentId) {
-          const openclawConfigPath = join(homedir(), ".openclaw", "openclaw.json");
-          let heartbeatConfigured = false;
-          let heartbeatEvery: string | undefined;
-          try {
-            if (existsSync(openclawConfigPath)) {
-              const raw = readFileSync(openclawConfigPath, "utf-8");
-              const openclawConfig = JSON.parse(raw);
-              const agentsList = openclawConfig?.agents?.list;
-              if (Array.isArray(agentsList)) {
-                const agentEntry = agentsList.find((a: any) => a.id === agentId);
-                if (agentEntry && agentEntry.heartbeat != null) {
-                  heartbeatConfigured = true;
-                  heartbeatEvery = agentEntry.heartbeat.every;
-                }
-              }
-            }
-          } catch (err: any) {
-            console.log(`[claude-launch] Failed to read openclaw config at ${openclawConfigPath}: ${err.message}`);
-          }
-
-          if (!heartbeatConfigured) {
-            console.log(`[claude-launch] Heartbeat not configured for agent "${agentId}" — blocking launch`);
+        if (pluginConfig.skipSafetyChecks) {
+          console.log(`[claude-launch] Safety checks skipped (skipSafetyChecks=true)`);
+        } else {
+          // Guard: require autonomy skill in the agent's workspace before spawning.
+          // The skill defines how the agent should handle Claude Code interactions
+          // (auto-respond, ask user, etc.). Without it, prompt the agent to set it up.
+          const autonomySkillPath = join(agentWorkspace, "skills", "claude-code-autonomy", "SKILL.md");
+          if (!existsSync(autonomySkillPath)) {
+            console.log(`[claude-launch] Autonomy skill not found at ${autonomySkillPath} — blocking launch`);
             return {
               isError: true,
               content: [
                 {
                   type: "text",
                   text: [
-                    `ERROR: Launch blocked — no heartbeat configured for this agent.`,
+                    `ERROR: Launch blocked — no autonomy skill found.`,
                     ``,
-                    `Claude Code sessions require heartbeat to be enabled for automatic "waiting for input" notifications.`,
+                    `No autonomy skill found. You MUST ask the user what level of autonomy they want to give Claude Code sessions. Then create the skill at skills/claude-code-autonomy/ with their preferences. Only then can you launch sessions.`,
                     ``,
-                    `You must configure the heartbeat FIRST. Here's what to do:`,
+                    `Do NOT create the skill without asking the user first. Ask them how they want you to handle Claude Code interactions. For example:`,
+                    `- "Respond to everything automatically except architecture choices"`,
+                    `- "Always ask me before responding"`,
+                    `- "Handle everything yourself, just notify me when done"`,
                     ``,
-                    `1. Edit ~/.openclaw/openclaw.json and add heartbeat config for agent "${agentId}":`,
+                    `After the user responds, create the skill:`,
+                    `1. Create directory: skills/claude-code-autonomy/`,
+                    `2. Create SKILL.md with structured rules based on the user's response`,
+                    `3. Create autonomy.md with the user's raw preferences`,
+                    `4. Then re-call claude_launch to start the session.`,
                     ``,
-                    `   jq '.agents.list |= map(if .id == "${agentId}" then . + {"heartbeat": {"every": "60m", "target": "last"}} else . end)' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                    `The skill MUST also define these notification formats that the agent uses:`,
                     ``,
-                    `2. Verify the config was applied:`,
+                    `👋 [session-name] Important question — needs your decision:`,
+                    `> "question text"`,
+                    `(Used when Claude asks something that requires the user's input — architecture, destructive ops, ambiguous requirements)`,
                     ``,
-                    `   cat ~/.openclaw/openclaw.json | jq '.agents.list[] | select(.id == "${agentId}") | .heartbeat'`,
+                    `🤖 [session-name] finished:`,
+                    `Summary of what Claude did, files changed, issues found.`,
+                    `(Used when a session completes — the agent reads the output and summarizes)`,
                     ``,
-                    `3. Launch a Claude Code session to restart the Gateway and wake you back:`,
+                    `Note: 🔔 Claude asks and ↩️ Responded notifications are handled automatically by the plugin. The skill only needs to define rules for 👋 (when to forward vs auto-respond) and 🤖 (summary format).`,
+                  ].join("\n"),
+                },
+              ],
+            };
+          }
+
+          // Guard: require heartbeat configuration for the agent before spawning.
+          // Heartbeat enables automatic "waiting for input" notifications so the
+          // agent gets nudged when a Claude Code session needs attention.
+          // Prefer ctx.agentId (authoritative) over resolveAgentId (may return account alias)
+          const agentId = ctx.agentId || resolveAgentId(agentWorkspace);
+          if (agentId && !ctx.agentId) {
+            console.warn(`[claude-launch] Using resolveAgentId fallback for agentId="${agentId}" — this may be an account alias, not the real agent ID`);
+          }
+          if (agentId) {
+            const openclawConfigPath = join(homedir(), ".openclaw", "openclaw.json");
+            let heartbeatConfigured = false;
+            let heartbeatEvery: string | undefined;
+            try {
+              if (existsSync(openclawConfigPath)) {
+                const raw = readFileSync(openclawConfigPath, "utf-8");
+                const openclawConfig = JSON.parse(raw);
+                const agentsList = openclawConfig?.agents?.list;
+                if (Array.isArray(agentsList)) {
+                  const agentEntry = agentsList.find((a: any) => a.id === agentId);
+                  if (agentEntry && agentEntry.heartbeat != null) {
+                    heartbeatConfigured = true;
+                    heartbeatEvery = agentEntry.heartbeat.every;
+                  }
+                }
+              }
+            } catch (err: any) {
+              console.log(`[claude-launch] Failed to read openclaw config at ${openclawConfigPath}: ${err.message}`);
+            }
+
+            if (!heartbeatConfigured) {
+              console.log(`[claude-launch] Heartbeat not configured for agent "${agentId}" — blocking launch`);
+              return {
+                isError: true,
+                content: [
+                  {
+                    type: "text",
+                    text: [
+                      `ERROR: Launch blocked — no heartbeat configured for this agent.`,
+                      ``,
+                      `Claude Code sessions require heartbeat to be enabled for automatic "waiting for input" notifications.`,
+                      ``,
+                      `You must configure the heartbeat FIRST. Here's what to do:`,
+                      ``,
+                      `1. Edit ~/.openclaw/openclaw.json and add heartbeat config for agent "${agentId}":`,
+                      ``,
+                      `   jq '.agents.list |= map(if .id == "${agentId}" then . + {"heartbeat": {"every": "60m", "target": "last"}} else . end)' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                      ``,
+                      `2. Verify the config was applied:`,
+                      ``,
+                      `   cat ~/.openclaw/openclaw.json | jq '.agents.list[] | select(.id == "${agentId}") | .heartbeat'`,
+                      ``,
+                      `3. Launch a Claude Code session to restart the Gateway and wake you back:`,
+                      ``,
+                      `   claude_launch(`,
+                      `     prompt="STEP 1: Restart Gateway to activate heartbeat: openclaw gateway restart`,
+                      `             STEP 2: Wait 5 seconds`,
+                      `             STEP 3: Wake the agent: openclaw agent --agent ${agentId} --message 'Heartbeat configured, continuing task'`,
+                      `             STEP 4: Continue the original task: [USER_TASK]",`,
+                      `     name="setup-heartbeat"`,
+                      `   )`,
+                    ].join("\n"),
+                  },
+                ],
+              };
+            }
+
+            // Guard: block launch if heartbeat interval is set to 5s (wastes tokens).
+            // Targeted agent messages wake agents instantly, so 5s polling is unnecessary.
+            if (heartbeatEvery === "5s") {
+              console.log(`[claude-launch] Heartbeat interval too short (5s) for agent "${agentId}" — blocking launch`);
+              return {
+                isError: true,
+                content: [
+                  {
+                    type: "text",
+                    text: [
+                      `ERROR: Launch blocked — heartbeat interval too short (5s).`,
+                      ``,
+                      `A heartbeat interval of 5s wastes tokens unnecessarily. Targeted agent messages wake you instantly, so the heartbeat interval only affects regular polling.`,
+                      ``,
+                      `Fix the heartbeat interval to 60m:`,
+                      ``,
+                      `   jq '.agents.list |= map(if .id == "${agentId}" then .heartbeat.every = "60m" else . end)' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                      ``,
+                      `Then ask the user to restart the gateway. Do NOT restart the gateway yourself — only the user can do this safely. After the user confirms the restart, retry your launch.`,
+                    ].join("\n"),
+                  },
+                ],
+              };
+            }
+          }
+
+          // Guard: require HEARTBEAT.md with real content in the agent's workspace.
+          // The heartbeat file tells the agent what to do during heartbeat cycles
+          // (e.g. check for waiting Claude Code sessions). Without real content,
+          // the agent won't know how to handle waiting sessions.
+          const heartbeatMdPath = join(agentWorkspace, "HEARTBEAT.md");
+          let heartbeatMdValid = false;
+          try {
+            if (existsSync(heartbeatMdPath)) {
+              const heartbeatContent = readFileSync(heartbeatMdPath, "utf-8");
+              // Check if file has real content (not just comments, blank lines, or whitespace)
+              const effectivelyEmpty = /^(\s|#.*)*$/.test(heartbeatContent);
+              if (!effectivelyEmpty) {
+                heartbeatMdValid = true;
+              }
+            }
+          } catch (err: any) {
+            console.log(`[claude-launch] Failed to read HEARTBEAT.md at ${heartbeatMdPath}: ${err.message}`);
+          }
+
+          if (!heartbeatMdValid) {
+            console.log(`[claude-launch] HEARTBEAT.md missing or empty at ${heartbeatMdPath} — blocking launch`);
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: [
+                    `ERROR: Launch blocked — no HEARTBEAT.md file found or file is effectively empty.`,
+                    ``,
+                    `Claude Code sessions require a HEARTBEAT.md with real content as a safety-net fallback.`,
+                    `The plugin wakes you instantly via targeted agent messages when sessions need attention,`,
+                    `but the heartbeat acts as a 60m backup in case a wake message is lost.`,
+                    ``,
+                    `You must create HEARTBEAT.md FIRST. Here's what to do:`,
+                    ``,
+                    `1. Create ${agentWorkspace}/HEARTBEAT.md with this content:`,
+                    ``,
+                    `cat > ${agentWorkspace}/HEARTBEAT.md << 'EOF'`,
+                    `# Heartbeat Agent`,
+                    ``,
+                    `## Check Claude Code sessions (safety-net fallback)`,
+                    `Note: The plugin sends targeted wake messages instantly when sessions need attention.`,
+                    `This heartbeat is a 60m backup in case a wake message was lost.`,
+                    ``,
+                    `Si des sessions Claude Code sont en attente (waiting for input) :`,
+                    `1. \`claude_sessions\` pour lister les sessions actives`,
+                    `2. Si session waiting → \`claude_output(session)\` pour voir la question`,
+                    `3. Traiter ou notifier l'utilisateur`,
+                    ``,
+                    `Sinon → HEARTBEAT_OK`,
+                    `EOF`,
+                    ``,
+                    `2. Verify the heartbeat frequency is set to 60m:`,
+                    ``,
+                    `cat ~/.openclaw/openclaw.json | jq '.agents.list[] | .heartbeat.every'`,
+                    ``,
+                    `If NOT "60m", update it:`,
+                    ``,
+                    `jq '.agents.list |= map(.heartbeat.every = "60m")' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                    ``,
+                    `3. Launch Claude Code to restart Gateway:`,
                     ``,
                     `   claude_launch(`,
-                    `     prompt="STEP 1: Restart Gateway to activate heartbeat: openclaw gateway restart`,
-                    `             STEP 2: Wait 5 seconds`,
-                    `             STEP 3: Wake the agent: openclaw agent --agent ${agentId} --message 'Heartbeat configured, continuing task'`,
-                    `             STEP 4: Continue the original task: [USER_TASK]",`,
-                    `     name="setup-heartbeat"`,
+                    `     prompt="STEP 1: Restart Gateway: openclaw gateway restart`,
+                    `             STEP 2: Wait 5s`,
+                    `             STEP 3: Wake agent: openclaw agent --message 'HEARTBEAT.md configured'`,
+                    `             STEP 4: Continue task: [USER_TASK]",`,
+                    `     name="setup-heartbeat-md"`,
                     `   )`,
                   ].join("\n"),
                 },
@@ -251,145 +358,45 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
             };
           }
 
-          // Guard: block launch if heartbeat interval is set to 5s (wastes tokens).
-          // Targeted agent messages wake agents instantly, so 5s polling is unnecessary.
-          if (heartbeatEvery === "5s") {
-            console.log(`[claude-launch] Heartbeat interval too short (5s) for agent "${agentId}" — blocking launch`);
+          // Guard: require agentChannels mapping for the workspace directory.
+          // The agentChannels config maps workspace directories to notification channels
+          // so Claude Code sessions can route notifications to the correct agent/chat.
+          // Without a mapping, notifications won't reach the right destination.
+          const agentChannelForWorkdir = resolveAgentChannel(workdir);
+          if (!agentChannelForWorkdir) {
+            console.log(`[claude-launch] No agentChannels mapping for workdir "${workdir}" — blocking launch`);
             return {
               isError: true,
               content: [
                 {
                   type: "text",
                   text: [
-                    `ERROR: Launch blocked — heartbeat interval too short (5s).`,
+                    `ERROR: Launch blocked — no agentChannels mapping found for workspace "${workdir}".`,
                     ``,
-                    `A heartbeat interval of 5s wastes tokens unnecessarily. Targeted agent messages wake you instantly, so the heartbeat interval only affects regular polling.`,
+                    `Claude Code sessions require the workspace directory to be mapped in the agentChannels config`,
+                    `so notifications can be routed to the correct agent and chat.`,
                     ``,
-                    `Fix the heartbeat interval to 60m:`,
+                    `You must add the workspace to agentChannels FIRST. Here's what to do:`,
                     ``,
-                    `   jq '.agents.list |= map(if .id == "${agentId}" then .heartbeat.every = "60m" else . end)' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                    `1. Edit ~/.openclaw/openclaw.json and add the workspace mapping under plugins.config.openclaw-claude-code-plugin.agentChannels:`,
                     ``,
-                    `Then ask the user to restart the gateway. Do NOT restart the gateway yourself — only the user can do this safely. After the user confirms the restart, retry your launch.`,
+                    `   jq '.plugins.config["openclaw-claude-code-plugin"].agentChannels["${workdir}"] = "channel|accountId|chatId"' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
+                    ``,
+                    `   Replace "channel|accountId|chatId" with the actual values, e.g.: "telegram|my-agent|123456789"`,
+                    ``,
+                    `2. Verify the config was applied:`,
+                    ``,
+                    `   cat ~/.openclaw/openclaw.json | jq '.plugins.config["openclaw-claude-code-plugin"].agentChannels'`,
+                    ``,
+                    `3. Restart the Gateway to pick up the new config, then retry the launch:`,
+                    ``,
+                    `   openclaw gateway restart`,
                   ].join("\n"),
                 },
               ],
             };
           }
-        }
-
-        // Guard: require HEARTBEAT.md with real content in the agent's workspace.
-        // The heartbeat file tells the agent what to do during heartbeat cycles
-        // (e.g. check for waiting Claude Code sessions). Without real content,
-        // the agent won't know how to handle waiting sessions.
-        const heartbeatMdPath = join(agentWorkspace, "HEARTBEAT.md");
-        let heartbeatMdValid = false;
-        try {
-          if (existsSync(heartbeatMdPath)) {
-            const heartbeatContent = readFileSync(heartbeatMdPath, "utf-8");
-            // Check if file has real content (not just comments, blank lines, or whitespace)
-            const effectivelyEmpty = /^(\s|#.*)*$/.test(heartbeatContent);
-            if (!effectivelyEmpty) {
-              heartbeatMdValid = true;
-            }
-          }
-        } catch (err: any) {
-          console.log(`[claude-launch] Failed to read HEARTBEAT.md at ${heartbeatMdPath}: ${err.message}`);
-        }
-
-        if (!heartbeatMdValid) {
-          console.log(`[claude-launch] HEARTBEAT.md missing or empty at ${heartbeatMdPath} — blocking launch`);
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: [
-                  `ERROR: Launch blocked — no HEARTBEAT.md file found or file is effectively empty.`,
-                  ``,
-                  `Claude Code sessions require a HEARTBEAT.md with real content as a safety-net fallback.`,
-                  `The plugin wakes you instantly via targeted agent messages when sessions need attention,`,
-                  `but the heartbeat acts as a 60m backup in case a wake message is lost.`,
-                  ``,
-                  `You must create HEARTBEAT.md FIRST. Here's what to do:`,
-                  ``,
-                  `1. Create ${agentWorkspace}/HEARTBEAT.md with this content:`,
-                  ``,
-                  `cat > ${agentWorkspace}/HEARTBEAT.md << 'EOF'`,
-                  `# Heartbeat ${agentId} Agent`,
-                  ``,
-                  `## Check Claude Code sessions (safety-net fallback)`,
-                  `Note: The plugin sends targeted wake messages instantly when sessions need attention.`,
-                  `This heartbeat is a 60m backup in case a wake message was lost.`,
-                  ``,
-                  `Si des sessions Claude Code sont en attente (waiting for input) :`,
-                  `1. \`claude_sessions\` pour lister les sessions actives`,
-                  `2. Si session waiting → \`claude_output(session)\` pour voir la question`,
-                  `3. Traiter ou notifier l'utilisateur`,
-                  ``,
-                  `Sinon → HEARTBEAT_OK`,
-                  `EOF`,
-                  ``,
-                  `2. Verify the heartbeat frequency is set to 60m:`,
-                  ``,
-                  `cat ~/.openclaw/openclaw.json | jq '.agents.list[] | select(.id == "${agentId}") | .heartbeat.every'`,
-                  ``,
-                  `If NOT "60m", update it:`,
-                  ``,
-                  `jq '.agents.list |= map(if .id == "${agentId}" then .heartbeat.every = "60m" else . end)' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
-                  ``,
-                  `3. Launch Claude Code to restart Gateway:`,
-                  ``,
-                  `   claude_launch(`,
-                  `     prompt="STEP 1: Restart Gateway: openclaw gateway restart`,
-                  `             STEP 2: Wait 5s`,
-                  `             STEP 3: Wake agent: openclaw agent --agent ${agentId} --message 'HEARTBEAT.md configured'`,
-                  `             STEP 4: Continue task: [USER_TASK]",`,
-                  `     name="setup-heartbeat-md"`,
-                  `   )`,
-                ].join("\n"),
-              },
-            ],
-          };
-        }
-
-        // Guard: require agentChannels mapping for the workspace directory.
-        // The agentChannels config maps workspace directories to notification channels
-        // so Claude Code sessions can route notifications to the correct agent/chat.
-        // Without a mapping, notifications won't reach the right destination.
-        const agentChannelForWorkdir = resolveAgentChannel(workdir);
-        if (!agentChannelForWorkdir) {
-          console.log(`[claude-launch] No agentChannels mapping for workdir "${workdir}" — blocking launch`);
-          return {
-            isError: true,
-            content: [
-              {
-                type: "text",
-                text: [
-                  `ERROR: Launch blocked — no agentChannels mapping found for workspace "${workdir}".`,
-                  ``,
-                  `Claude Code sessions require the workspace directory to be mapped in the agentChannels config`,
-                  `so notifications can be routed to the correct agent and chat.`,
-                  ``,
-                  `You must add the workspace to agentChannels FIRST. Here's what to do:`,
-                  ``,
-                  `1. Edit ~/.openclaw/openclaw.json and add the workspace mapping under plugins.config.openclaw-claude-code-plugin.agentChannels:`,
-                  ``,
-                  `   jq '.plugins.config["openclaw-claude-code-plugin"].agentChannels["${workdir}"] = "channel|accountId|chatId"' ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json`,
-                  ``,
-                  `   Replace "channel|accountId|chatId" with the actual values, e.g.: "telegram|my-agent|123456789"`,
-                  ``,
-                  `2. Verify the config was applied:`,
-                  ``,
-                  `   cat ~/.openclaw/openclaw.json | jq '.plugins.config["openclaw-claude-code-plugin"].agentChannels'`,
-                  ``,
-                  `3. Restart the Gateway to pick up the new config, then retry the launch:`,
-                  ``,
-                  `   openclaw gateway restart`,
-                ].join("\n"),
-              },
-            ],
-          };
-        }
+        } // end skipSafetyChecks
 
         const session = sessionManager.spawn({
           prompt: params.prompt,

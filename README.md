@@ -136,6 +136,7 @@ Set values in `~/.openclaw/openclaw.json` under `plugins.config["openclaw-claude
 | `maxAutoResponds` | `number` | `10` | Max consecutive auto-responds before requiring user input |
 | `defaultBudgetUsd` | `number` | `5` | Default budget per session (USD) |
 | `permissionMode` | `string` | `"bypassPermissions"` | `"default"` / `"plan"` / `"acceptEdits"` / `"bypassPermissions"` |
+| `skipSafetyChecks` | `boolean` | `false` | Skip ALL pre-launch safety guards (autonomy skill, heartbeat, HEARTBEAT.md, agentChannels). For dev/testing only. |
 
 ### Example
 
