@@ -404,7 +404,7 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
           multiTurn: !params.multi_turn_disabled,
           permissionMode: params.permission_mode,
           originChannel,
-          originAgentId: agentId,
+          originAgentId: ctx.agentId || undefined,
         });
 
         const promptSummary =

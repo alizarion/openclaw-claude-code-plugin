@@ -67,6 +67,9 @@ export class SessionManager {
   /** Debounce tracker: session ID → last waiting-for-input event timestamp */
   private lastWaitingEventTimestamps: Map<string, number> = new Map();
 
+  /** Pending retry timer IDs from fireSystemEventWithRetry, cleared on shutdown */
+  private pendingRetryTimers: Set<ReturnType<typeof setTimeout>> = new Set();
+
   /**
    * Persisted Claude session IDs — survives session cleanup/GC.
    * Key: our internal session ID (nanoid) or session name.
@@ -292,9 +295,9 @@ export class SessionManager {
     const originChannel = session.originChannel;
     if (originChannel && originChannel !== "unknown") {
       const parts = originChannel.split("|");
-      if (parts.length === 3) {
-        // Format: channel|account|target (e.g. "telegram|default|1783869317")
-        deliverArgs.push("--deliver", "--reply-channel", parts[0], "--reply-account", parts[1], "--reply-to", parts[2]);
+      if (parts.length >= 3) {
+        // Format: channel|account|target[|extra...] (e.g. "telegram|default|1783869317")
+        deliverArgs.push("--deliver", "--reply-channel", parts[0], "--reply-account", parts[1], "--reply-to", parts.slice(2).join("|"));
       } else if (parts.length === 2) {
         // Format: channel|target (e.g. "telegram|1783869317")
         deliverArgs.push("--deliver", "--reply-channel", parts[0], "--reply-to", parts[1]);
@@ -329,7 +332,8 @@ export class SessionManager {
         if (stderr) console.error(`[SessionManager] stderr: ${stderr}`);
         // Single retry after delay
         console.warn(`[SessionManager] Scheduling retry in ${WAKE_RETRY_DELAY_MS}ms for ${label} session=${sessionId}`);
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+          this.pendingRetryTimers.delete(timer);
           execFile("openclaw", args, { timeout: WAKE_CLI_TIMEOUT_MS }, (retryErr, _retryStdout, retryStderr) => {
             if (retryErr) {
               console.error(`[SessionManager] System event retry also failed for ${label} session=${sessionId}: ${retryErr.message}`);
@@ -339,6 +343,7 @@ export class SessionManager {
             }
           });
         }, WAKE_RETRY_DELAY_MS);
+        this.pendingRetryTimers.add(timer);
       } else {
         console.log(`[SessionManager] System event sent for ${label} session=${sessionId}`);
       }
@@ -505,14 +510,15 @@ export class SessionManager {
   killAll(): void {
     for (const session of this.sessions.values()) {
       if (session.status === "starting" || session.status === "running") {
-        session.kill();
-        this.persistSession(session);
-        if (this.notificationRouter) {
-          this.notificationRouter.onSessionComplete(session, session.originChannel);
-        }
-        this.triggerAgentEvent(session);
+        this.kill(session.id);
       }
     }
+
+    // Clear any pending retry timers to avoid fire-after-shutdown
+    for (const timer of this.pendingRetryTimers) {
+      clearTimeout(timer);
+    }
+    this.pendingRetryTimers.clear();
   }
 
   cleanup(): void {
