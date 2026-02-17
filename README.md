@@ -1,4 +1,4 @@
-# Claude Code Plugin
+# OpenClaw plugin to orchestrate Claude Code
 
 Orchestrate Claude Code sessions as managed background processes from any OpenClaw channel.
 
