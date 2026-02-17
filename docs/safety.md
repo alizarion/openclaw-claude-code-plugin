@@ -1,6 +1,6 @@
 # Safety & Pre-Launch Checks
 
-When an agent calls the `claude_launch` tool, **5 mandatory guards** run before any session is spawned. If any check fails, the launch is blocked with a clear, actionable error message — and the agent either fixes it automatically or gives you a one-liner to run.
+When an agent calls the `claude_launch` tool, **4 mandatory guards** run before any session is spawned. If any check fails, the launch is blocked with a clear, actionable error message — and the agent either fixes it automatically or gives you a one-liner to run.
 
 These checks are enforced only on the `claude_launch` **tool** (agent callers). The gateway RPC method (`claude-code.launch`) and chat command (`/claude`) skip them — those callers are assumed to be properly configured.
 
@@ -14,9 +14,8 @@ These checks are enforced only on the `claude_launch` **tool** (agent callers). 
 |---|-------|---------------|---------------|
 | 1 | Autonomy Skill | `{workspace}/skills/claude-code-autonomy/SKILL.md` exists | Agent creates after asking user |
 | 2 | Heartbeat Config | `heartbeat` field in `openclaw.json` for current agent | User runs `jq` command |
-| 3 | Heartbeat Interval | Interval is not `"5s"` | User updates config |
-| 4 | HEARTBEAT.md Content | `HEARTBEAT.md` exists with non-empty content | Agent creates automatically |
-| 5 | agentChannels Mapping | Workspace directory mapped in `agentChannels` config | User runs `jq` command |
+| 3 | HEARTBEAT.md Content | `HEARTBEAT.md` exists with non-empty content | Agent creates automatically |
+| 4 | agentChannels Mapping | Workspace directory mapped in `agentChannels` config | User runs `jq` command |
 
 ---
 
@@ -77,30 +76,7 @@ Then restart the gateway: `openclaw gateway restart`
 
 ---
 
-## Guard 3: Heartbeat Interval Validation
-
-### What It Checks
-
-If heartbeat is configured, the plugin checks that the `every` interval is **not** `"5s"`. This specific value is blocked because it causes excessive token burn from constant polling.
-
-### Why It Matters
-
-A 5-second heartbeat means the agent wakes up every 5 seconds to check for work — burning tokens on 720 empty heartbeat cycles per hour. Since the plugin's targeted agent messages already wake the agent instantly when a session needs attention, there's no benefit to short polling intervals.
-
-### How to Fix
-
-Update the interval to `60m`:
-
-```bash
-jq '.agents.list |= map(if .id == "YOUR_AGENT" then .heartbeat.every = "60m" else . end)' \
-  ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json
-```
-
-Then ask the user to restart the gateway. The agent will **not** restart the gateway itself — this is by design to prevent disrupting other running agents.
-
----
-
-## Guard 4: HEARTBEAT.md Content
+## Guard 3: HEARTBEAT.md Content
 
 ### What It Checks
 
@@ -133,7 +109,7 @@ Otherwise -> HEARTBEAT_OK
 
 ---
 
-## Guard 5: agentChannels Mapping
+## Guard 4: agentChannels Mapping
 
 ### What It Checks
 
@@ -178,9 +154,8 @@ Then restart the gateway: `openclaw gateway restart`
 3. **Guards fire sequentially** — each blocked guard gives an actionable error:
    - Guard 1: Agent asks your autonomy preferences, creates the skill
    - Guard 2: Agent provides a `jq` command for heartbeat config
-   - Guard 3: Skipped (only blocks if interval is `5s`)
-   - Guard 4: Agent creates `HEARTBEAT.md` automatically
-   - Guard 5: Agent provides a `jq` command for channel mapping
+   - Guard 3: Agent creates `HEARTBEAT.md` automatically
+   - Guard 4: Agent provides a `jq` command for channel mapping
 
 4. **All checks pass** — session launches. Future launches skip setup entirely.
 
@@ -210,9 +185,6 @@ Let the agent ask you the autonomy question and create the skill. Don't create i
 
 ### "Launch blocked — no heartbeat configured"
 Run the `jq` command the agent provides, then restart the gateway.
-
-### "Launch blocked — heartbeat interval too short (5s)"
-Change the interval to `"60m"` using the provided `jq` command. Ask the user to restart the gateway — the agent won't do this itself.
 
 ### "Launch blocked — HEARTBEAT.md missing or empty"
 Let the agent create it. If it already exists but is empty or contains only headings, add real content describing what to do during heartbeat cycles.

@@ -45,7 +45,7 @@ Launch a Claude Code session in the background to execute a development task. Se
 
 ### Pre-Launch Guards
 
-Before spawning, `claude_launch` runs [5 mandatory safety checks](safety.md). If any check fails, the launch is blocked with an actionable error message. Other tools and the gateway RPC skip these guards.
+Before spawning, `claude_launch` runs [4 mandatory safety checks](safety.md). If any check fails, the launch is blocked with an actionable error message. Other tools and the gateway RPC skip these guards.
 
 ### Example
 

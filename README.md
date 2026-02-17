@@ -34,7 +34,7 @@ Add to `~/.openclaw/openclaw.json` under `plugins.config["openclaw-claude-code-p
 
 Ask your agent: *"Fix the bug in auth.ts"*
 
-On first launch, the plugin runs **5 safety checks** and guides you through one-time setup:
+On first launch, the plugin runs **4 safety checks** and guides you through one-time setup:
 
 1. **Answer an autonomy question** — tell the agent how much freedom Claude Code gets
 2. **Run a heartbeat config command** — paste the `jq` one-liner the agent provides
@@ -53,7 +53,7 @@ That's it. Future launches skip setup entirely.
 - **Real-time notifications** — Get notified on completion, failure, or when Claude asks a question
 - **Multi-turn conversations** — Send follow-up messages, interrupt, or iterate with a running agent
 - **Session resume & fork** — Resume any completed session or fork it into a new conversation branch
-- **5 pre-launch safety checks** — Autonomy skill, heartbeat config, interval validation, HEARTBEAT.md, and channel mapping
+- **4 pre-launch safety checks** — Autonomy skill, heartbeat config, HEARTBEAT.md, and channel mapping
 - **Multi-agent support** — Route notifications to the correct agent/chat via workspace-based channel mapping
 - **Automatic cleanup** — Completed sessions garbage-collected after 1 hour; IDs persist for resume
 
