@@ -153,6 +153,20 @@ export class Session {
   async start(): Promise<void> {
     let q;
     try {
+      // Read Claude Code settings to support custom API configurations
+      // This allows users with custom APIs (proxies, Z.AI, etc.) to use their existing credentials
+      let claudeSettings: { env?: Record<string, string> } = {};
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const settingsPath = path.join(process.env.HOME || "", ".claude", "settings.json");
+        const settingsContent = fs.readFileSync(settingsPath, "utf-8");
+        claudeSettings = JSON.parse(settingsContent);
+      } catch (err) {
+        // Settings file is optional - silently continue if not found
+        // This allows standard Claude Code CLI authentication to work normally
+      }
+
       // Build SDK options
       const options: any = {
         cwd: this.workdir,
@@ -165,6 +179,20 @@ export class Session {
         abortController: this.abortController,
         ...(this.systemPrompt ? { systemPrompt: this.systemPrompt } : {}),
       };
+
+      // Inject API credentials from Claude settings if available
+      // This enables support for custom API endpoints and authentication methods
+      if (claudeSettings.env) {
+        if (claudeSettings.env.ANTHROPIC_AUTH_TOKEN) {
+          options.apiKey = claudeSettings.env.ANTHROPIC_AUTH_TOKEN;
+        }
+        if (claudeSettings.env.ANTHROPIC_BASE_URL) {
+          options.baseURL = claudeSettings.env.ANTHROPIC_BASE_URL;
+        }
+        if (claudeSettings.env.API_TIMEOUT_MS) {
+          options.timeoutMs = parseInt(claudeSettings.env.API_TIMEOUT_MS, 10);
+        }
+      }
 
       // Resume support (Task 16): pass resume + forkSession to SDK
       if (this.resumeSessionId) {
