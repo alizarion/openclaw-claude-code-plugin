@@ -21,12 +21,21 @@ openclaw gateway restart
 
 ### 2. Configure notifications (minimal)
 
-Add to `~/.openclaw/openclaw.json` under `plugins.config["openclaw-claude-code-plugin"]`:
+Add to `~/.openclaw/openclaw.json`:
 
-```json
+```jsonc
 {
-  "fallbackChannel": "telegram|my-bot|123456789",
-  "maxSessions": 5
+  "plugins": {
+    "entries": {
+      "openclaw-claude-code-plugin": {
+        "enabled": true,
+        "config": {
+          "fallbackChannel": "telegram|my-bot|123456789",
+          "maxSessions": 5
+        }
+      }
+    }
+  }
 }
 ```
 
@@ -124,7 +133,7 @@ Foreground sessions stream full output in real time. Background sessions only se
 
 ## Configuration
 
-Set values in `~/.openclaw/openclaw.json` under `plugins.config["openclaw-claude-code-plugin"]`.
+Set values in `~/.openclaw/openclaw.json` under `plugins.entries["openclaw-claude-code-plugin"].config`.
 
 ### Essential parameters
 
@@ -140,16 +149,25 @@ Set values in `~/.openclaw/openclaw.json` under `plugins.config["openclaw-claude
 
 ### Example
 
-```json
+```jsonc
 {
-  "maxSessions": 3,
-  "defaultBudgetUsd": 10,
-  "defaultModel": "sonnet",
-  "permissionMode": "bypassPermissions",
-  "fallbackChannel": "telegram|main-bot|123456789",
-  "agentChannels": {
-    "/home/user/agent-seo": "telegram|seo-bot|123456789",
-    "/home/user/agent-main": "telegram|main-bot|123456789"
+  "plugins": {
+    "entries": {
+      "openclaw-claude-code-plugin": {
+        "enabled": true,
+        "config": {
+          "maxSessions": 3,
+          "defaultBudgetUsd": 10,
+          "defaultModel": "sonnet",
+          "permissionMode": "bypassPermissions",
+          "fallbackChannel": "telegram|main-bot|123456789",
+          "agentChannels": {
+            "/home/user/agent-seo": "telegram|seo-bot|123456789",
+            "/home/user/agent-main": "telegram|main-bot|123456789"
+          }
+        }
+      }
+    }
   }
 }
 ```

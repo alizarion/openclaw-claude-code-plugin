@@ -125,7 +125,7 @@ Otherwise -> HEARTBEAT_OK
 
 ### What It Checks
 
-The plugin looks up the session's working directory in the `agentChannels` config (under `plugins.config["openclaw-claude-code-plugin"].agentChannels` in `~/.openclaw/openclaw.json`). It uses **longest-prefix matching** with trailing-slash normalization — so a mapping for `/home/user/projects` covers `/home/user/projects/my-app`.
+The plugin looks up the session's working directory in the `agentChannels` config (under `plugins.entries["openclaw-claude-code-plugin"].config.agentChannels` in `~/.openclaw/openclaw.json`). It uses **longest-prefix matching** with trailing-slash normalization — so a mapping for `/home/user/projects` covers `/home/user/projects/my-app`.
 
 ### Why It Matters
 
@@ -139,7 +139,7 @@ The `agentChannels` mapping tells the plugin which notification channel (agent +
 Add the workspace mapping using the `jq` command the agent provides:
 
 ```bash
-jq '.plugins.config["openclaw-claude-code-plugin"].agentChannels["/path/to/workspace"] = "channel|accountId|chatId"' \
+jq '.plugins.entries["openclaw-claude-code-plugin"].config.agentChannels["/path/to/workspace"] = "channel|accountId|chatId"' \
   ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json
 ```
 

@@ -14,19 +14,22 @@ Without `agentChannels`, the plugin has no way to know which Telegram bot or cha
 
 ## Configuration
 
-`agentChannels` lives in `~/.openclaw/openclaw.json` under the plugin config key:
+`agentChannels` lives in `~/.openclaw/openclaw.json` under `plugins.entries["openclaw-claude-code-plugin"].config`:
 
 ```jsonc
 {
   "plugins": {
-    "config": {
+    "entries": {
       "openclaw-claude-code-plugin": {
-        "agentChannels": {
-          "/home/user/agent-seo":  "telegram|seo-bot|123456789",
-          "/home/user/agent-main": "telegram|main-bot|9876543210",
-          "/home/user/shared":     "telegram|ops-bot|5555555555"
-        },
-        "fallbackChannel": "telegram|default-bot|123456789"
+        "enabled": true,
+        "config": {
+          "agentChannels": {
+            "/home/user/agent-seo":  "telegram|seo-bot|123456789",
+            "/home/user/agent-main": "telegram|main-bot|9876543210",
+            "/home/user/shared":     "telegram|ops-bot|5555555555"
+          },
+          "fallbackChannel": "telegram|default-bot|123456789"
+        }
       }
     }
   }
@@ -97,16 +100,19 @@ A session launched in `/home/user/projects/seo-app/backend` matches **both** ent
 
 ## `fallbackChannel`
 
-`fallbackChannel` is a separate top-level plugin config field used by `resolveOriginChannel()` — **not** by `resolveAgentChannel()`.
+`fallbackChannel` is a separate field under `plugins.entries["openclaw-claude-code-plugin"].config` used by `resolveOriginChannel()` — **not** by `resolveAgentChannel()`.
 
 When the plugin cannot determine the origin channel from the command/tool context (no `ctx.channel`, no `ctx.chatId`, etc.) and no explicit channel was provided, it falls back to `pluginConfig.fallbackChannel`. If that is also unset, it returns `"unknown"`.
 
 ```jsonc
 {
   "plugins": {
-    "config": {
+    "entries": {
       "openclaw-claude-code-plugin": {
-        "fallbackChannel": "telegram|default-bot|123456789"
+        "enabled": true,
+        "config": {
+          "fallbackChannel": "telegram|default-bot|123456789"
+        }
       }
     }
   }
@@ -169,7 +175,7 @@ Calls `resolveAgentChannel(workdir)`. If it returns `undefined`, the session's w
 **Blocked?** The agent must add the workspace to `agentChannels` in `openclaw.json`:
 
 ```bash
-jq '.plugins.config["openclaw-claude-code-plugin"].agentChannels["/path/to/workspace"] = "telegram|my-agent|123456789"' \
+jq '.plugins.entries["openclaw-claude-code-plugin"].config.agentChannels["/path/to/workspace"] = "telegram|my-agent|123456789"' \
   ~/.openclaw/openclaw.json > /tmp/openclaw-updated.json && \
   mv /tmp/openclaw-updated.json ~/.openclaw/openclaw.json
 ```
@@ -220,15 +226,18 @@ Edit `~/.openclaw/openclaw.json`:
 ```jsonc
 {
   "plugins": {
-    "config": {
+    "entries": {
       "openclaw-claude-code-plugin": {
-        "maxSessions": 5,
-        "defaultBudgetUsd": 5,
-        "agentChannels": {
-          "/home/user/agent-seo": "telegram|seo-bot|1111111111",
-          "/home/user/agent-dev": "telegram|dev-bot|2222222222"
-        },
-        "fallbackChannel": "telegram|seo-bot|1111111111"
+        "enabled": true,
+        "config": {
+          "maxSessions": 5,
+          "defaultBudgetUsd": 5,
+          "agentChannels": {
+            "/home/user/agent-seo": "telegram|seo-bot|1111111111",
+            "/home/user/agent-dev": "telegram|dev-bot|2222222222"
+          },
+          "fallbackChannel": "telegram|seo-bot|1111111111"
+        }
       }
     }
   }
