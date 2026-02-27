@@ -18,7 +18,7 @@ import { registerGatewayMethods } from "./src/gateway";
 import { SessionManager } from "./src/session-manager";
 import { NotificationRouter } from "./src/notifications";
 import { setSessionManager, setNotificationRouter, setPluginConfig, pluginConfig } from "./src/shared";
-import { execFile } from "child_process";
+import { execFileOpenclaw } from "./src/spawn-helper";
 
 // Plugin register function - called by OpenClaw when loading the plugin
 export function register(api: any) {
@@ -161,7 +161,7 @@ export function register(api: any) {
         }
         cliArgs.push("--target", target, "-m", text);
 
-        execFile("openclaw", cliArgs, { timeout: 15_000 }, (err, stdout, stderr) => {
+        execFileOpenclaw(cliArgs, { timeout: 15_000 }, (err, stdout, stderr) => {
           if (err) {
             console.error(`[claude-code] sendMessage CLI ERROR: ${err.message}`);
             if (stderr) console.error(`[claude-code] sendMessage CLI STDERR: ${stderr}`);
