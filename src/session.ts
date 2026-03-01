@@ -60,6 +60,7 @@ export class Session {
   private readonly systemPrompt?: string;
   private readonly allowedTools?: string[];
   private readonly permissionMode: PermissionMode;
+  private readonly env?: Record<string, string>;
 
   // Resume/fork config (Task 16)
   readonly resumeSessionId?: string;
@@ -141,6 +142,7 @@ export class Session {
     this.systemPrompt = config.systemPrompt;
     this.allowedTools = config.allowedTools;
     this.permissionMode = config.permissionMode ?? pluginConfig.permissionMode ?? "bypassPermissions";
+    this.env = config.env;
     this.originChannel = config.originChannel;
     this.originAgentId = config.originAgentId;
     this.resumeSessionId = config.resumeSessionId;
@@ -164,6 +166,7 @@ export class Session {
         includePartialMessages: true,
         abortController: this.abortController,
         ...(this.systemPrompt ? { systemPrompt: this.systemPrompt } : {}),
+        ...(this.env ? { env: this.env } : {}),
       };
 
       // Resume support (Task 16): pass resume + forkSession to SDK
