@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { Type } from "@sinclair/typebox";
-import { sessionManager, pluginConfig, resolveOriginChannel, resolveAgentChannel, resolveAgentId } from "../shared";
+import { sessionManager, pluginConfig, resolveOriginChannel, resolveAgentChannel, resolveAgentId, resolveAgentEnv } from "../shared";
 import type { OpenClawPluginToolContext } from "../types";
 
 export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
@@ -398,6 +398,9 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
           }
         } // end skipSafetyChecks
 
+        // Resolve per-agent environment variables from agentEnv config
+        const agentEnv = resolveAgentEnv(workdir);
+
         const session = sessionManager.spawn({
           prompt: params.prompt,
           name: params.name,
@@ -412,6 +415,7 @@ export function makeClaudeLaunchTool(ctx: OpenClawPluginToolContext) {
           permissionMode: params.permission_mode,
           originChannel,
           originAgentId: ctx.agentId || undefined,
+          env: agentEnv,
         });
 
         const promptSummary =

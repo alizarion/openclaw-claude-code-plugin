@@ -29,6 +29,7 @@ export function setPluginConfig(config: Partial<PluginConfig>): void {
     fallbackChannel: config.fallbackChannel,
     agentChannels: config.agentChannels,
     maxAutoResponds: config.maxAutoResponds ?? 10,
+    agentEnv: config.agentEnv,
   };
 }
 
@@ -132,6 +133,30 @@ export function resolveAgentChannel(workdir: string): string | undefined {
   for (const [dir, channel] of entries) {
     if (normWorkdir === normalise(dir) || normWorkdir.startsWith(normalise(dir) + "/")) {
       return channel;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve per-agent environment variables for a given workdir from the agentEnv config.
+ * Uses the same longest-prefix-match logic as resolveAgentChannel.
+ * Returns the matched env vars merged on top of process.env, or undefined if no match.
+ */
+export function resolveAgentEnv(workdir: string): Record<string, string> | undefined {
+  const mapping = pluginConfig.agentEnv;
+  if (!mapping) return undefined;
+
+  const normalise = (p: string) => p.replace(/\/+$/, "");
+  const normWorkdir = normalise(workdir);
+
+  const entries = Object.entries(mapping).sort(
+    (a, b) => b[0].length - a[0].length,
+  );
+
+  for (const [dir, env] of entries) {
+    if (normWorkdir === normalise(dir) || normWorkdir.startsWith(normalise(dir) + "/")) {
+      return { ...process.env as Record<string, string>, ...env };
     }
   }
   return undefined;
