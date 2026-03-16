@@ -64,6 +64,16 @@
         "type": "boolean",
         "default": false,
         "description": "Skip ALL pre-launch safety guards (autonomy skill, heartbeat, HEARTBEAT.md, agentChannels). Use only for development/testing."
+      },
+      "agentEnv": {
+        "type": "object",
+        "description": "Per-agent environment variables keyed by working directory prefix. Longest prefix match wins. Matched env vars are merged on top of process.env for that session. Example: { \"/home/user/project-a\": { \"GH_TOKEN\": \"ghp_xxx\" } }",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
       }
     }
   }

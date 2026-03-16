@@ -41,6 +41,9 @@ export interface SessionConfig {
 
   // Multi-turn support (Task 15)
   multiTurn?: boolean;  // If true, use AsyncIterable prompt for multi-turn conversations
+
+  // Per-agent environment variables
+  env?: Record<string, string>;
 }
 
 export interface ClaudeSession {
@@ -116,4 +119,17 @@ export interface PluginConfig {
    * Default: false.
    */
   skipSafetyChecks?: boolean;
+
+  /**
+   * Per-agent environment variables, keyed by working directory prefix.
+   * When a session is launched, the plugin matches the session's workdir
+   * against these prefixes (longest match wins) and merges the matching
+   * env vars into the session's environment, overriding process.env.
+   *
+   * Example: {
+   *   "/home/user/teramino": { "GH_TOKEN": "ghp_teramino_token" },
+   *   "/home/user/other-project": { "GH_TOKEN": "ghp_other_token" }
+   * }
+   */
+  agentEnv?: Record<string, Record<string, string>>;
 }
