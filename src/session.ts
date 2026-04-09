@@ -240,6 +240,13 @@ export class Session {
     this.clearSafetyNetTimer();
     this.safetyNetTimer = setTimeout(() => {
       this.safetyNetTimer = undefined;
+      // Skip safety-net when a subagent is actively running — subagents can
+      // run for minutes without emitting SDK messages to the parent stream.
+      if (this.activeTask) {
+        console.log(`[Session] ${this.id} safety-net skipped — subagent "${this.activeTask.description}" active (${Math.round((Date.now() - this.activeTask.startedAt) / 1000)}s)`);
+        this.resetSafetyNetTimer(); // Re-arm for another cycle
+        return;
+      }
       if (this.status === "running" && this.onWaitingForInput && !this.waitingForInputFired) {
         console.log(`[Session] ${this.id} no messages for ${Session.SAFETY_NET_IDLE_MS / 1000}s — firing onWaitingForInput (safety-net)`);
         this.waitingForInputFired = true;
