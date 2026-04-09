@@ -76,7 +76,7 @@ export class Session {
   // end-of-turn result handler — this timer is a rare fallback for edge cases
   // (e.g. Claude stuck waiting for permission/clarification without a result event).
   private safetyNetTimer?: ReturnType<typeof setTimeout>;
-  private static readonly SAFETY_NET_IDLE_MS = 15_000;
+  private static readonly SAFETY_NET_IDLE_MS = 60_000;
 
   // State
   status: SessionStatus = "starting";
