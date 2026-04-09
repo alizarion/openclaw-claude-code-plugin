@@ -115,6 +115,9 @@ export class Session {
   // Origin channel -- the channel that launched this session (for background notifications)
   originChannel?: string;
 
+  // Thread anchor: message ID of the "Launched" notification — subsequent notifications reply to this
+  notificationThreadTs?: string;
+
   // Deliver channel -- the agent's own channel for --deliver args in wakeAgent()
   readonly deliverChannel?: string;
 
