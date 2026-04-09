@@ -77,6 +77,7 @@ export class Session {
   // (e.g. Claude stuck waiting for permission/clarification without a result event).
   private safetyNetTimer?: ReturnType<typeof setTimeout>;
   private static readonly SAFETY_NET_IDLE_MS = 60_000;
+  private static readonly SUBAGENT_MAX_MS = 10 * 60 * 1000; // 10 min max before safety-net overrides
 
   // State
   status: SessionStatus = "starting";
@@ -243,9 +244,14 @@ export class Session {
       // Skip safety-net when a subagent is actively running — subagents can
       // run for minutes without emitting SDK messages to the parent stream.
       if (this.activeTask) {
-        console.log(`[Session] ${this.id} safety-net skipped — subagent "${this.activeTask.description}" active (${Math.round((Date.now() - this.activeTask.startedAt) / 1000)}s)`);
-        this.resetSafetyNetTimer(); // Re-arm for another cycle
-        return;
+        const elapsed = Date.now() - this.activeTask.startedAt;
+        if (elapsed < Session.SUBAGENT_MAX_MS) {
+          console.log(`[Session] ${this.id} safety-net skipped — subagent "${this.activeTask.description}" active (${Math.round(elapsed / 1000)}s)`);
+          this.resetSafetyNetTimer(); // Re-arm for another cycle
+          return;
+        }
+        console.log(`[Session] ${this.id} subagent exceeded ${Session.SUBAGENT_MAX_MS / 60000}min max — firing safety-net anyway`);
+        this.activeTask = undefined;
       }
       if (this.status === "running" && this.onWaitingForInput && !this.waitingForInputFired) {
         console.log(`[Session] ${this.id} no messages for ${Session.SAFETY_NET_IDLE_MS / 1000}s — firing onWaitingForInput (safety-net)`);
