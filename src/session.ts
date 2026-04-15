@@ -167,6 +167,7 @@ export class Session {
         allowedTools: this.allowedTools,
         includePartialMessages: true,
         abortController: this.abortController,
+        settingSources: ["project", "user"] as const,
         ...(this.systemPrompt ? { systemPrompt: this.systemPrompt } : {}),
       };
 
