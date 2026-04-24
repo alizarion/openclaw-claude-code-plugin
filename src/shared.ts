@@ -223,6 +223,13 @@ export function formatSessionListing(session: Session): string {
     `   📝 "${promptSummary}"`,
   ];
 
+  // Show active subagent/task info (SDK 0.2.97+)
+  if (session.activeTask) {
+    const secs = Math.round((Date.now() - session.activeTask.startedAt) / 1000);
+    const lastTool = session.activeTask.lastToolName ? `, last: ${session.activeTask.lastToolName}` : "";
+    lines.push(`   ⏳ Running subagent: ${session.activeTask.description} (${secs}s, ${session.activeTask.toolUses} tools${lastTool})`);
+  }
+
   // Show Claude session ID for resume support
   if (session.claudeSessionId) {
     lines.push(`   🔗 Claude ID: ${session.claudeSessionId}`);

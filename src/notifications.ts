@@ -21,7 +21,9 @@ import { formatDuration } from "./shared";
  */
 
 // Callback type: the plugin must provide a way to send messages to a channel
-export type SendMessageFn = (channelId: string, text: string) => void;
+// replyTo is optional — when provided, the message is sent as a thread reply (Slack thread_ts)
+// onMessageId is optional — called with the message ID after delivery (for thread anchoring)
+export type SendMessageFn = (channelId: string, text: string, replyTo?: string, onMessageId?: (msgId: string) => void) => void;
 
 // Debounce state per channel per session
 interface DebounceEntry {
@@ -207,8 +209,8 @@ export class NotificationRouter {
    * to display messages in the conversation thread without going through
    * the foreground streaming / debounce logic.
    */
-  emitToChannel(channelId: string, text: string): void {
-    this.sendMessage(channelId, text);
+  emitToChannel(channelId: string, text: string, replyTo?: string, onMessageId?: (msgId: string) => void): void {
+    this.sendMessage(channelId, text, replyTo, onMessageId);
   }
 
   // ─── Long-running reminder ─────────────────────────────────────────

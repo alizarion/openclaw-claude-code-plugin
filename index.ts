@@ -88,7 +88,7 @@ export function register(api: any) {
       //   or just a bare chat ID.
       // Fallback channel comes from config.fallbackChannel (e.g. "telegram:123456789").
 
-      const sendMessage = (channelId: string, text: string) => {
+      const sendMessage = (channelId: string, text: string, replyTo?: string, onMessageId?: (msgId: string) => void) => {
         // Resolve channel and target from channelId
         // Expected formats:
         //   "telegram:123456789" → channel=telegram, target=123456789
@@ -160,6 +160,9 @@ export function register(api: any) {
           cliArgs.push("--account", account);
         }
         cliArgs.push("--target", target, "-m", text);
+        if (replyTo) {
+          cliArgs.push("--reply-to", replyTo);
+        }
 
         execFile("openclaw", cliArgs, { timeout: 15_000 }, (err, stdout, stderr) => {
           if (err) {
@@ -168,6 +171,11 @@ export function register(api: any) {
           } else {
             console.log(`[claude-code] sendMessage CLI OK -> channel=${channel}, target=${target}${account ? `, account=${account}` : ""}`);
             if (stdout.trim()) console.log(`[claude-code] sendMessage CLI STDOUT: ${stdout.trim()}`);
+            // Extract message ID from stdout (format: "✅ Sent via Slack. Message ID: 1775733533.407779")
+            if (onMessageId) {
+              const match = stdout.match(/Message ID:\s*(\S+)/);
+              if (match) onMessageId(match[1]);
+            }
           }
         });
       };

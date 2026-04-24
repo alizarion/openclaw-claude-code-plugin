@@ -76,7 +76,8 @@ export class Session {
   // end-of-turn result handler — this timer is a rare fallback for edge cases
   // (e.g. Claude stuck waiting for permission/clarification without a result event).
   private safetyNetTimer?: ReturnType<typeof setTimeout>;
-  private static readonly SAFETY_NET_IDLE_MS = 15_000;
+  private static readonly SAFETY_NET_IDLE_MS = 60_000;
+  private static readonly SUBAGENT_MAX_MS = 10 * 60 * 1000; // 10 min max before safety-net overrides
 
   // State
   status: SessionStatus = "starting";
@@ -114,6 +115,9 @@ export class Session {
   // Origin channel -- the channel that launched this session (for background notifications)
   originChannel?: string;
 
+  // Thread anchor: message ID of the "Launched" notification — subsequent notifications reply to this
+  notificationThreadTs?: string;
+
   // Deliver channel -- the agent's own channel for --deliver args in wakeAgent()
   readonly deliverChannel?: string;
 
@@ -123,6 +127,17 @@ export class Session {
   // Flags
   budgetExhausted: boolean = false;
   private waitingForInputFired: boolean = false;
+
+  // Active subagent/task tracking (SDK 0.2.97+)
+  activeTask?: {
+    taskId: string;
+    description: string;
+    taskType?: string;
+    startedAt: number;
+    lastToolName?: string;
+    toolUses: number;
+    durationMs: number;
+  };
 
   // Auto-respond safety cap: tracks consecutive agent-initiated responds
   autoRespondCount: number = 0;
@@ -230,6 +245,18 @@ export class Session {
     this.clearSafetyNetTimer();
     this.safetyNetTimer = setTimeout(() => {
       this.safetyNetTimer = undefined;
+      // Skip safety-net when a subagent is actively running — subagents can
+      // run for minutes without emitting SDK messages to the parent stream.
+      if (this.activeTask) {
+        const elapsed = Date.now() - this.activeTask.startedAt;
+        if (elapsed < Session.SUBAGENT_MAX_MS) {
+          console.log(`[Session] ${this.id} safety-net skipped — subagent "${this.activeTask.description}" active (${Math.round(elapsed / 1000)}s)`);
+          this.resetSafetyNetTimer(); // Re-arm for another cycle
+          return;
+        }
+        console.log(`[Session] ${this.id} subagent exceeded ${Session.SUBAGENT_MAX_MS / 60000}min max — firing safety-net anyway`);
+        this.activeTask = undefined;
+      }
       if (this.status === "running" && this.onWaitingForInput && !this.waitingForInputFired) {
         console.log(`[Session] ${this.id} no messages for ${Session.SAFETY_NET_IDLE_MS / 1000}s — firing onWaitingForInput (safety-net)`);
         this.waitingForInputFired = true;
@@ -348,6 +375,44 @@ export class Session {
               console.log(`[Session] ${this.id} onToolUse callback NOT set`);
             }
           }
+        }
+      } else if (msg.type === "system" && msg.subtype === "task_started") {
+        // SDK 0.2.97+: subagent/task just started
+        this.activeTask = {
+          taskId: msg.task_id,
+          description: msg.description,
+          taskType: msg.task_type,
+          startedAt: Date.now(),
+          toolUses: 0,
+          durationMs: 0,
+        };
+        const taskLine = `🚀 Subagent started: ${msg.description}`;
+        console.log(`[Session] ${this.id} ${taskLine}`);
+        this.outputBuffer.push(taskLine);
+        if (this.onOutput) this.onOutput(taskLine);
+      } else if (msg.type === "system" && msg.subtype === "task_progress") {
+        // SDK 0.2.97+: periodic progress from running subagent
+        if (this.activeTask && msg.task_id === this.activeTask.taskId) {
+          this.activeTask.lastToolName = msg.last_tool_name;
+          this.activeTask.toolUses = msg.usage?.tool_uses ?? this.activeTask.toolUses;
+          this.activeTask.durationMs = msg.usage?.duration_ms ?? this.activeTask.durationMs;
+        }
+        const secs = Math.round((msg.usage?.duration_ms ?? 0) / 1000);
+        const progressLine = `⏳ Subagent: ${msg.last_tool_name ?? "working"} (${secs}s, ${msg.usage?.tool_uses ?? 0} tools)`;
+        console.log(`[Session] ${this.id} ${progressLine}`);
+        this.outputBuffer.push(progressLine);
+      } else if (msg.type === "system" && msg.subtype === "task_notification") {
+        // SDK 0.2.97+: subagent completed/failed/stopped
+        const notifLine = `📋 Subagent ${msg.status}: ${msg.summary ?? msg.task_id}`;
+        console.log(`[Session] ${this.id} ${notifLine}`);
+        this.outputBuffer.push(notifLine);
+        this.activeTask = undefined;
+        if (this.onOutput) this.onOutput(notifLine);
+      } else if (msg.type === "tool_progress") {
+        // SDK 0.2.97+: periodic heartbeat for any long-running tool
+        const elapsed = Math.round(msg.elapsed_time_seconds ?? 0);
+        if (elapsed > 5) {
+          this.outputBuffer.push(`⏳ ${msg.tool_name} running... (${elapsed}s)`);
         }
       } else if (msg.type === "result") {
         this.result = {

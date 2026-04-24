@@ -372,8 +372,15 @@ export class SessionManager {
     }
 
     const channel = session.deliverChannel ?? session.originChannel ?? "unknown";
-    console.log(`[SessionManager] Delivering ${label} to Telegram for session=${session.id} via channel=${channel}`);
-    this.notificationRouter.emitToChannel(channel, notificationText);
+    const threadTs = session.notificationThreadTs;
+    console.log(`[SessionManager] Delivering ${label} to Telegram for session=${session.id} via channel=${channel}${threadTs ? ` (thread=${threadTs})` : ""}`);
+    this.notificationRouter.emitToChannel(channel, notificationText, threadTs, (msgId) => {
+      // Capture the first notification's message ID as thread anchor
+      if (!session.notificationThreadTs) {
+        session.notificationThreadTs = msgId;
+        console.log(`[SessionManager] Thread anchored for session=${session.id}: ${msgId}`);
+      }
+    });
   }
 
   /**
@@ -503,14 +510,20 @@ export class SessionManager {
 
     // Build IPC event text for the agent
     const sessionType = session.multiTurn ? "Multi-turn session" : "Session";
+    const hasActiveSubagent = !!session.activeTask;
+    const statusLine = hasActiveSubagent
+      ? `${sessionType} has a subagent running — DO NOT kill. Check progress with claude_sessions or claude_output.`
+      : `${sessionType} is waiting for input.`;
     const eventText = [
-      `${sessionType} is waiting for input.`,
+      statusLine,
       `Name: ${session.name} | ID: ${session.id}`,
       ``,
       `Last output:`,
       preview,
       ``,
-      `Use claude_respond(session='${session.id}', message='...') to send a reply, or claude_output(session='${session.id}') to see full context.`,
+      hasActiveSubagent
+        ? `Subagent is active. Use claude_sessions(status='running') to check progress. Only respond if the user asked a question.`
+        : `Use claude_respond(session='${session.id}', message='...') to send a reply, or claude_output(session='${session.id}') to see full context.`,
     ].join("\n");
 
     // wakeAgent() handles: (1) Telegram delivery, (2) detached IPC wake
