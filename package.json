@@ -21,9 +21,9 @@
     "@anthropic-ai/claude-agent-sdk": "0.2.37"
   },
   "devDependencies": {
-    "esbuild": "^0.27.3",
-    "@sinclair/typebox": "^0.34.48",
-    "nanoid": "^3.3.7"
+    "esbuild": "0.27.3",
+    "@sinclair/typebox": "0.34.48",
+    "nanoid": "3.3.7"
   },
   "keywords": [
     "openclaw",
